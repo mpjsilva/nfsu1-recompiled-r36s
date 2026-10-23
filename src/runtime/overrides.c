@@ -33,7 +33,7 @@ static void ov_is_cyrix(void) {
     g_esp += 4;
 }
 
-#if defined(NFS_R36S) || defined(NFS_FX_PRESHADER_ONLY)
+#if (defined(NFS_R36S) || defined(NFS_FX_PRESHADER_ONLY)) && !defined(NFS_GAME_U1)
 /* Diagnostics (NFSU2_FX_STATS=1): D3DX effect BeginPass (vtable method 0x0066A9F6, args effect, pass):
  * calls per frame, distinct effects and how often the same effect+pass is applied twice in a row. */
 #include <stdio.h>
@@ -174,18 +174,25 @@ static void ov_crt_memmove(void) {
 }
 
 static const struct { uint32_t va; nfs_override_fn fn; } k_overrides[] = {
+#if defined(NFS_GAME_U1)
+    /* NFSU1 SPEED.EXE: the same two routines, found by their byte patterns (config/overrides.txt). */
+    { 0x00643A39u, ov_is_cyrix },
+    { 0x00672630u, ov_crt_memmove },
+    { 0x00678D30u, ov_crt_memmove },
+#else
     { 0x006F5FC5u, ov_is_cyrix },
 #if defined(NFS_R36S)
     { 0x0066A9F6u, ov_fx_begin_pass },
 #endif
     { 0x0075CFD0u, ov_crt_memmove },
+#endif
 };
 
 /* Called on every indirect call that misses its call-site cache (polymorphic vtable sites), and for every
  * effect-method call (overrides are never site-cached): a hash of the ~55 overridden VAs instead of a linear
  * scan of the method table for any target in the D3DX range. Built once; read-only afterwards (the sound
  * threads call this too). */
-#if defined(NFS_R36S)
+#if defined(NFS_R36S) && !defined(NFS_GAME_U1)
 extern int nfs_fx_lazy_enabled(void);
 extern void nfs_fx_lazy_begin(void); extern void nfs_fx_lazy_begin_pass(void); extern void nfs_fx_lazy_commit(void);
 extern void nfs_fx_lazy_end_pass(void); extern void nfs_fx_lazy_end(void);
@@ -200,7 +207,7 @@ static void ov_put(uint32_t va, nfs_override_fn fn) {
     if (!ovKey[h]) { ovKey[h] = va; ovFn[h] = fn; }  /* first entry wins, like the scans did */
 }
 static void ov_build(void) {
-#if defined(NFS_R36S)
+#if defined(NFS_R36S) && !defined(NFS_GAME_U1)
     const char* e = getenv("NFSU2_FX_STATS");
     const int stats = e && e[0] == '1';
     if (stats || nfs_fx_cache_mode() != 0)
@@ -215,7 +222,7 @@ static void ov_build(void) {
     }
 #else
     /* Android: the effect Set* hooks feed the preshader cache (fx_cache.c, NFS_FX_PRESHADER_ONLY). */
-#if defined(NFS_FX_PRESHADER_ONLY)
+#if defined(NFS_FX_PRESHADER_ONLY) && !defined(NFS_GAME_U1)
     if (nfs_fx_cache_mode() != 0)
         for (unsigned i = 0; i < sizeof k_fxMethods / sizeof k_fxMethods[0]; ++i)
             if (k_fxMethods[i].va != 0x0065e26cu) ov_put(k_fxMethods[i].va, ov_fx_method);

@@ -167,6 +167,9 @@ void attachTextureSurface(uint32_t texture,uint32_t surface){
 // render surface descriptor at 0x86e774, then releases both on device Reset.
 // The copy does not call AddRef, so account for that owned descriptor here.
 void retainInitialDepthDescriptor(uint32_t outputAddress,uint32_t surfaceAddress){
+#if defined(NFS_GAME_U1)
+    return;
+#endif
     if(outputAddress!=0x870854||!surfaceAddress)return;
     std::lock_guard<std::recursive_mutex> lock(objectsMutex);
     auto it=objects.find(surfaceAddress);

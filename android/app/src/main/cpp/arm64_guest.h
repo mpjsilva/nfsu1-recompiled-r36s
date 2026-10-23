@@ -17,6 +17,12 @@ extern int nfs_android_resolution(void);
 #undef RECOMP_ENTER
 // g_cur_func (diagnostics only: crash and import logs) is set on entry only with NFS_TRACK_CUR_FUNC: a
 // constant materialisation and a store on every call otherwise.
+// GetRacingResolution of the lifted game (SPEED2.EXE: sub_005BF2E0); 0 = none (NFSU1: not located yet).
+#if defined(NFS_GAME_U1)
+#define NFS_RESOLUTION_HOOK_VA 0u
+#else
+#define NFS_RESOLUTION_HOOK_VA 0x005BF2E0u
+#endif
 #ifdef NFS_TRACK_CUR_FUNC
 #define NFS_SET_CUR_FUNC(va) (g_cur_func=(va))
 #else
@@ -24,7 +30,7 @@ extern int nfs_android_resolution(void);
 #endif
 #define RECOMP_ENTER(va) do { \
     NFS_SET_CUR_FUNC(va); RECOMP_FLAGS_IN(); \
-    if((va)==0x005BF2E0u){ \
+    if(NFS_RESOLUTION_HOOK_VA&&(va)==NFS_RESOLUTION_HOOK_VA){ \
         RECOMP_REGS_OUT(); \
         if(nfs_android_resolution()){RECOMP_REGS_IN();return;} \
         RECOMP_REGS_IN(); \
@@ -253,7 +259,7 @@ static inline __attribute__((always_inline)) uint64_t nfs_dbits(double v) { uint
         for (int _k = 0; _k < l_lwk; ++_k) { l_lw[NFS_LWB + _k] = l_lws[_k] = l_stw[l_g0 + _k]; l_lwi[NFS_LWB + _k] = l_lwis[_k] = l_sti[l_g0 + _k]; } } \
     do { \
         NFS_SET_CUR_FUNC(va); RECOMP_FLAGS_IN(); \
-        if((va)==0x005BF2E0u){ \
+        if(NFS_RESOLUTION_HOOK_VA&&(va)==NFS_RESOLUTION_HOOK_VA){ \
             RECOMP_REGS_OUT(); \
             if(nfs_android_resolution()){RECOMP_REGS_IN();return;} \
             RECOMP_REGS_IN(); \

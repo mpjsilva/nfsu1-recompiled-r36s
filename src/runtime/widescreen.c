@@ -91,6 +91,9 @@ static void adjust_mem_pair(uint32_t vx, uint32_t vy) {
 
 void nfs_widescreen_init(const char* game_root) {
     char path[1024];
+#if defined(NFS_GAME_U1)
+    return;  /* every address below is SPEED2.EXE's (NFSU1: 4:3 and the game's own pacing for now) */
+#endif
     s_hud_count = 0;
     if (getenv("NFSU2_WIDESCREEN_DAT")) {
         load_dat(getenv("NFSU2_WIDESCREEN_DAT"));
@@ -121,6 +124,9 @@ void nfs_widescreen_init(const char* game_root) {
 
 void nfs_widescreen_set_resolution(unsigned width, unsigned height) {
     float hud_scale_x;
+#if defined(NFS_GAME_U1)
+    return;  /* every address below is SPEED2.EXE's (NFSU1: 4:3 and the game's own pacing for now) */
+#endif
     if (!s_enabled || !width || !height) return;
     s_width = (float)width; s_height = (float)height;
     s_aspect = s_width / s_height;
@@ -152,6 +158,9 @@ void nfs_widescreen_set_frame_rate(unsigned fps) {
 }
 
 void nfs_widescreen_apply_frame_rate(void) {
+#if defined(NFS_GAME_U1)
+    return;  /* every address below is SPEED2.EXE's (NFSU1: 4:3 and the game's own pacing for now) */
+#endif
     if (s_frame_time <= 0.0f) return;
     if (rdf(0x00865558u) != s_frame_time) {
         wrf(0x00865558u, s_frame_time);   /* main loop pacing (SetFrameRate) */

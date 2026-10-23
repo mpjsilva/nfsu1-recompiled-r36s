@@ -19,6 +19,7 @@ extern "C" int __llvm_profile_write_file(void) __attribute__((weak));  // clang 
 #include "d3d9_bridge.h"
 #include "d3d9_gles.h"
 #include "guest_boot_worker.h"
+#include "nfs_game.h"
 #include "nfs_widescreen.h"
 #include "runtime_log.h"
 #include "vkbd.h"
@@ -306,7 +307,7 @@ std::string findGamePath(int argc, char** argv) {
     // 1. Explicit CLI argument
     if (argc > 1 && argv[1] && argv[1][0] != '-') {
         std::filesystem::path p(argv[1]);
-        if (std::filesystem::exists(p / "SPEED2.EXE") || std::filesystem::exists(p / "speed2.exe")) {
+        if (std::filesystem::exists(p / NFS_GUEST_EXE) || std::filesystem::exists(p / NFS_GUEST_EXE_LOWER)) {
             return p.string();
         }
         if (std::filesystem::exists(p) && !std::filesystem::is_directory(p)) {
@@ -315,26 +316,26 @@ std::string findGamePath(int argc, char** argv) {
     }
 
     // 2. Local gamedata folder (PortMaster standard)
-    if (std::filesystem::exists("gamedata/SPEED2.EXE") || std::filesystem::exists("gamedata/speed2.exe")) {
+    if (std::filesystem::exists("gamedata/" NFS_GUEST_EXE) || std::filesystem::exists("gamedata/" NFS_GUEST_EXE_LOWER)) {
         return "gamedata";
     }
 
     // 3. Current working directory
-    if (std::filesystem::exists("SPEED2.EXE") || std::filesystem::exists("speed2.exe")) {
+    if (std::filesystem::exists(NFS_GUEST_EXE) || std::filesystem::exists(NFS_GUEST_EXE_LOWER)) {
         return ".";
     }
 
     // 4. Default PortMaster mount point on ArkOS / R36S SD cards
     const char* defaultPaths[] = {
-        "/roms/ports/nfsu2/gamedata",
-        "/roms2/ports/nfsu2/gamedata",
-        "/storage/roms/ports/nfsu2/gamedata",
-        "/roms/ports/nfsu2",
-        "/roms2/ports/nfsu2"
+        "/roms/ports/" NFS_PORT_DIR "/gamedata",
+        "/roms2/ports/" NFS_PORT_DIR "/gamedata",
+        "/storage/roms/ports/" NFS_PORT_DIR "/gamedata",
+        "/roms/ports/" NFS_PORT_DIR,
+        "/roms2/ports/" NFS_PORT_DIR
     };
     for (const char* path : defaultPaths) {
-        if (std::filesystem::exists(std::string(path) + "/SPEED2.EXE") ||
-            std::filesystem::exists(std::string(path) + "/speed2.exe")) {
+        if (std::filesystem::exists(std::string(path) + "/" NFS_GUEST_EXE) ||
+            std::filesystem::exists(std::string(path) + "/" NFS_GUEST_EXE_LOWER)) {
             return path;
         }
     }
@@ -475,7 +476,7 @@ int main(int argc, char** argv) {
     Uint32 windowFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN;
 
     g_window = SDL_CreateWindow(
-        "Need for Speed: Underground 2",
+        NFS_GAME_TITLE,
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         static_cast<int>(config.screenWidth), static_cast<int>(config.screenHeight),
         windowFlags
@@ -485,7 +486,7 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "SDL window with an alpha channel failed (%s); retrying without\n", SDL_GetError());
         SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
         g_window = SDL_CreateWindow(
-            "Need for Speed: Underground 2",
+            NFS_GAME_TITLE,
             SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
             static_cast<int>(config.screenWidth), static_cast<int>(config.screenHeight),
             windowFlags
@@ -533,9 +534,9 @@ int main(int argc, char** argv) {
     setGuestWidescreen(config.widescreen);
 
     // Start guest boot thread
-    std::string exePath = config.gameDir + "/SPEED2.EXE";
+    std::string exePath = config.gameDir + "/" NFS_GUEST_EXE;
     if (!std::filesystem::exists(exePath)) {
-        exePath = config.gameDir + "/speed2.exe";
+        exePath = config.gameDir + "/" NFS_GUEST_EXE_LOWER;
     }
 
     if (std::getenv("NFSU2_VKBD_SHOW")) vkbd::state().visible = true;  // smoke tests: show the overlay

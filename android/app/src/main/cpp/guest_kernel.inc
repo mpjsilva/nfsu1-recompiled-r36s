@@ -138,12 +138,12 @@ void deleteCritical() {
 }
 void startupInfo() {std::memset(ptr(arg(0),68),0,68);write32(arg(0),68);ret(0,1);}
 void setHandleCount() {ret(arg(0),1);}
-void commandLine() {if(!guestCommandLine)guestCommandLine=ansiString("\"C:\\nfsu2\\SPEED2.EXE\"");ret(guestCommandLine,0);}
+void commandLine() {if(!guestCommandLine)guestCommandLine=ansiString("\"C:\\nfsu2\\" NFS_GUEST_EXE "\"");ret(guestCommandLine,0);}
 void moduleHandleW() {
     if(!arg(0)){ret(imageBase,1);return;}
     auto chars=wideString(arg(0));std::string name;
     for(auto c:chars){if(c>127){lastError=126;ret(0,1);return;}name.push_back(static_cast<char>(c));}
-    name=lower(name);if(name=="speed2.exe"){ret(imageBase,1);return;}
+    name=lower(name);if(name=="speed2.exe"||name=="speed.exe"){ret(imageBase,1);return;}
     if(name.find('.')==std::string::npos)name+=".dll";
     auto found=modules.find(name);if(found==modules.end())lastError=126;ret(found==modules.end()?0:found->second,1);
 }
@@ -173,7 +173,7 @@ void freeEnvironmentW() {bool ok=arg(0)==guestEnvironmentW && guestEnvironmentW;
 void moduleFileName() {
     uint32_t module=arg(0),out=arg(1),capacity=arg(2);
     if(module && module!=imageBase) {lastError=126;ret(0,3);return;}
-    const std::string path="C:\\nfsu2\\SPEED2.EXE";
+    const std::string path="C:\\nfsu2\\" NFS_GUEST_EXE;
     uint32_t count=std::min(capacity,static_cast<uint32_t>(path.size()));
     if(count)std::memcpy(ptr(out,count),path.data(),count);
     if(capacity>count)*static_cast<char*>(ptr(out+count,1))=0;else lastError=122;
@@ -345,7 +345,7 @@ void moduleEntry(bool first){
     uint32_t out=arg(1);if(read32(out)<548){lastError=24;ret(0,2);return;}
     std::memset(ptr(out,548),0,548);write32(out,548);write32(out+4,1);write32(out+8,1);
     write32(out+12,1);write32(out+16,1);write32(out+20,imageBase);write32(out+24,imageSize);write32(out+28,imageBase);
-    const char name[]="SPEED2.EXE",path[]="C:\\nfsu2\\SPEED2.EXE";
+    const char name[]=NFS_GUEST_EXE,path[]="C:\\nfsu2\\" NFS_GUEST_EXE;
     std::memcpy(ptr(out+32,sizeof name),name,sizeof name);std::memcpy(ptr(out+288,sizeof path),path,sizeof path);
     snapshot->second.consumed=true;ret(1,2);
 }
@@ -357,7 +357,7 @@ void processEntry(bool first){
     if(!(snapshot->second.flags&2)||snapshot->second.processConsumed){lastError=18;ret(0,2);return;}
     uint32_t out=arg(1);if(read32(out)<296){lastError=24;ret(0,2);return;}
     std::memset(ptr(out,296),0,296);write32(out,296);write32(out+8,1);write32(out+20,1);write32(out+28,8);
-    const char name[]="SPEED2.EXE";std::memcpy(ptr(out+36,sizeof name),name,sizeof name);
+    const char name[]=NFS_GUEST_EXE;std::memcpy(ptr(out+36,sizeof name),name,sizeof name);
     snapshot->second.processConsumed=true;ret(1,2);
 }
 void processFirst(){processEntry(true);}void processNext(){processEntry(false);}
@@ -369,7 +369,7 @@ uint32_t nextRegistryHandle=0xf0050000;
 void registryOpen(uint32_t output,uint32_t argc){
     auto key=lower(guestString(arg(1)));
     NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU2","Registry open %08x\\%s",arg(0),key.c_str());
-    if(arg(0)!=0x80000002u||(key!="software\\ea games\\need for speed underground 2"&&key!="software\\electronic arts\\ea games\\need for speed underground 2")){
+    if(arg(0)!=0x80000002u||(key!=NFS_REGISTRY_KEY_A&&key!=NFS_REGISTRY_KEY_B)){
         if(output)write32(output,0);ret(2,argc);return;
     }
     if(gameRegistry.empty()){

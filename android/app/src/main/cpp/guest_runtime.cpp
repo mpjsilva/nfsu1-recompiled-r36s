@@ -1,6 +1,7 @@
 #include <set>
 #include <condition_variable>
 #include "guest_runtime.h"
+#include "nfs_game.h"
 #include "android_resolution.h"
 #include "guest_memory.h"
 #include "guest_heap.h"
@@ -438,7 +439,7 @@ void moduleHandle() {
     if(!arg(0)) { ret(imageBase,1); return; }
     auto name=lower(guestString(arg(0)));
     auto separator=name.find_last_of("/\\"); if(separator!=std::string::npos) name=name.substr(separator+1);
-    if(name=="speed2.exe") { ret(imageBase,1); return; }
+    if(name=="speed2.exe"||name=="speed.exe") { ret(imageBase,1); return; }
     if(name.find('.')==std::string::npos) name+=".dll";
     if(uint32_t loaded=guestModuleHandle(name)) { ret(loaded,1); return; }
     auto module=modules.find(name);
@@ -690,9 +691,15 @@ void loadImage(const char* path) {
         nt.FileHeader.SizeOfOptionalHeader<sizeof(pe_opt_header32)) throw GuestStop("Expected x86 PE32");
     auto opt=nt.OptionalHeader; imageBase=opt.ImageBase; imageSize=opt.SizeOfImage;
     resourceRva=opt.DataDirectory[2].VirtualAddress;resourceSize=opt.DataDirectory[2].Size;
+#if defined(NFS_GAME_U1)
+    // NFSU1's SPEED.EXE (entry 0x670cb5, image ends at 0x794368).
+    if (imageBase!=0x400000 || opt.AddressOfEntryPoint!=0x270cb5)
+        throw GuestStop("PE layout does not match generated NFSU1 code");
+#else
     if (imageBase!=0x400000 || (opt.AddressOfEntryPoint!=0x35bcc7 && opt.AddressOfEntryPoint!=0x35b9f1))
         throw GuestStop("PE layout does not match generated NFSU2 code");
     if (imageSize < 0x532000) imageSize = 0x532000;
+#endif
     memory->commit(imageBase,imageSize);
     imageRange(0,opt.SizeOfHeaders);
     if (opt.SizeOfHeaders>file.size()) throw GuestStop("Truncated PE headers");
@@ -705,10 +712,12 @@ void loadImage(const char* path) {
         std::memcpy(ptr(imageBase+sec.VirtualAddress,sec.SizeOfRawData),file.data()+sec.PointerToRawData,sec.SizeOfRawData);
     }
     entry=imageBase+opt.AddressOfEntryPoint;
+#if !defined(NFS_GAME_U1)
     if (entry == 0x0075bcc7u && !recomp_lookup(0x0075bcc7u) && recomp_lookup(0x0075b9f1u)) {
         NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU2","Remapping entry point 0x0075bcc7 -> 0x0075b9f1 (WinMainCRTStartup)");
         entry = 0x0075b9f1u;
     }
+#endif
     // Guest VAs stay fixed; the 64-bit host base is ADDR's offset. No PE
     // relocation toward the host address and no executable x86 mapping.
     auto directory=opt.DataDirectory[PE_DIR_IMPORT];
@@ -734,6 +743,9 @@ uint32_t callGuest(uint32_t va, const std::vector<uint32_t>& args, uint32_t clea
 }
 #include "guest_modules.inc"
 void testLiftedCopy() {
+#if defined(NFS_GAME_U1)
+    return;  // the check calls NFSU2's sub_00401000 (a copy routine); NFSU1 has another function there
+#endif
     uint32_t source=allocate(128), dest=allocate(128);
     for (unsigned i=0;i<128;++i) static_cast<unsigned char*>(ptr(source,128))[i]=static_cast<unsigned char>(i^0xa5);
     g_esi=0x11111111; g_edi=0x22222222; g_xmm[7].u64[0]=0xfedcba9876543210ull;
@@ -769,8 +781,10 @@ void testGuestTimers(){
     }catch(...){timerTestActive=false;for(auto& timer:timerHandles)timer.second->cancelled=true;timerHandles.clear();throw;}
 }
 void testGuestFileTime(){
-    auto imported=[&](const std::string& name){for(uint32_t i=0;i<imports.size();++i)if(imports[i].name==name)return importBase+i*16;throw GuestStop("File-time import unavailable");};
+    auto imported=[&](const std::string& name){for(uint32_t i=0;i<imports.size();++i)if(imports[i].name==name)return importBase+i*16;return 0u;};
     uint32_t local=imported("kernel32.dll!FileTimeToLocalFileTime"),system=imported("kernel32.dll!FileTimeToSystemTime");
+    // The check goes through the game's own import slots; a game that imports neither (NFSU1) never converts.
+    if(!local||!system){NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU2","Guest FILETIME check skipped: the game does not import the conversions");return;}
     uint32_t data=allocate(48);uint64_t epoch=116444736000000000ull+1234ull*10000ull;
     std::memset(ptr(data,48),0xa5,48);std::memcpy(ptr(data,8),&epoch,8);
     bool okay=callGuest(local,{data,data+8})==1&&read32(data+8)==uint32_t(epoch)&&read32(data+12)==uint32_t(epoch>>32)
@@ -1111,7 +1125,11 @@ recomp_func_t lookupImportLocked(uint32_t va) {
     return imports[index].function;
 }
 extern "C" void recomp_unresolved(const char* kind,uint32_t va,uint32_t from) {
+#if defined(NFS_GAME_U1)
+    if(false){
+#else
     if(from==0x00725520u&&memory){
+#endif
         uint32_t node=read32(0x8b446c);
         for(unsigned i=0;i<12&&node&&memory->readable(node,16);++i){
             NFS_RUNTIME_LOG(ANDROID_LOG_WARN,"NFSU2","Audio callback node=%08x next=%08x prev=%08x function=%08x data=%08x",node,read32(node),read32(node+4),read32(node+8),read32(node+12));
@@ -1149,7 +1167,7 @@ void configureAndroidResolutionModes(){
     }
     write32(0x870d1c,5);
 }
-#if defined(NFS_R36S)
+#if defined(NFS_R36S) && !defined(NFS_GAME_U1)
 // GetRacingResolution(int* w, int* h) is sub_005BF2E0 in the lifted SPEED2.EXE (stdcall, ret 8). It returns
 // fixed sizes per menu slot (640x480 for slot 0); the R36S build renames the lifted function *_orig
 // (build_guest_vm.sh wrap list) and answers with the size main.cpp chose for this screen.
@@ -1213,7 +1231,9 @@ std::string connectGuestRuntime(const char* executable) {
             nfs_widescreen_init(hostGameRoot.c_str());
             NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU2","Widescreen: %d HUD offsets loaded",nfs_widescreen_hud_entries());
         }else NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU2","Widescreen disabled: original 4:3 geometry");
-#if defined(NFS_R36S)
+#if defined(NFS_GAME_U1)
+        // NFSU1's resolution table is not located yet: the game keeps its own 640x480 default.
+#elif defined(NFS_R36S)
         // Slot 0 of the game's resolution table (originally 640x480) carries the size the host chose for
         // this screen (main.cpp chooseResolution: the panel's native size by default), and is the one used.
         write32(0x870d1c, 0);
