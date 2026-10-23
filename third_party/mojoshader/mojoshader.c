@@ -2309,6 +2309,7 @@ static int parse_ctab_typeinfo(Context *ctx, const uint8 *start,
 //  http://msdn.microsoft.com/en-us/library/bb205440(VS.85).aspx
 // This may tell us high-level truths about an otherwise generic low-level
 //  registers, for instance, how large an array actually is, etc.
+static int ctab_bad_line;
 static void parse_constant_table(Context *ctx, const uint32 *tokens,
                                  const uint32 bytes, const uint32 okay_version,
                                  const int setvariables, CtabData *ctab)
@@ -2338,19 +2339,22 @@ static void parse_constant_table(Context *ctx, const uint32 *tokens,
     const uint32 version = SWAP32(tokens[4]);
     const uint32 constants = SWAP32(tokens[5]);
     const uint32 constantinfo = SWAP32(tokens[6]);
-    const uint32 target = SWAP32(tokens[8]);
+    // The first DirectX 9 SDK's D3DXSHADER_CONSTANTTABLE ends after ConstantInfo (20 bytes, no Flags or
+    // Target); Need for Speed Underground compiles its effects with that D3DX at run time.
+    const int legacy_ctab = (size == 20);
+    const uint32 target = legacy_ctab ? 0 : SWAP32(tokens[8]);
 
-    if (size != CTAB_SIZE)
-        goto corrupt_ctab;
+    if (size != CTAB_SIZE && !legacy_ctab)
+        { ctab_bad_line = __LINE__; goto corrupt_ctab; }
     else if (constants > 1000000)  // sanity check.
-        goto corrupt_ctab;
+        { ctab_bad_line = __LINE__; goto corrupt_ctab; }
 
-    if (version != okay_version) goto corrupt_ctab;
-    if (creator >= bytes) goto corrupt_ctab;
-    if (constantinfo >= bytes) goto corrupt_ctab;
-    if ((bytes - constantinfo) < (constants * CINFO_SIZE)) goto corrupt_ctab;
-    if (target >= bytes) goto corrupt_ctab;
-    if (!parse_ctab_string(start, bytes, target)) goto corrupt_ctab;
+    if (version != okay_version) { ctab_bad_line = __LINE__; goto corrupt_ctab; }
+    if (creator >= bytes) { ctab_bad_line = __LINE__; goto corrupt_ctab; }
+    if (constantinfo >= bytes) { ctab_bad_line = __LINE__; goto corrupt_ctab; }
+    if ((bytes - constantinfo) < (constants * CINFO_SIZE)) { ctab_bad_line = __LINE__; goto corrupt_ctab; }
+    if (!legacy_ctab && target >= bytes) { ctab_bad_line = __LINE__; goto corrupt_ctab; }
+    if (!legacy_ctab && !parse_ctab_string(start, bytes, target)) { ctab_bad_line = __LINE__; goto corrupt_ctab; }
     // !!! FIXME: check that (start+target) points to "ps_3_0", etc.
 
     ctab->symbols = NULL;
@@ -2375,8 +2379,8 @@ static void parse_constant_table(Context *ctx, const uint32 *tokens,
         const uint32 defval = SWAP32(*((uint32 *) (ptr + 16)));
         MOJOSHADER_uniformType mojotype = MOJOSHADER_UNIFORM_UNKNOWN;
 
-        if (!parse_ctab_string(start, bytes, name)) goto corrupt_ctab;
-        if (defval >= bytes) goto corrupt_ctab;
+        if (!parse_ctab_string(start, bytes, name)) { ctab_bad_line = __LINE__; goto corrupt_ctab; }
+        if (defval >= bytes) { ctab_bad_line = __LINE__; goto corrupt_ctab; }
 
         switch (regset)
         {
@@ -2384,7 +2388,7 @@ static void parse_constant_table(Context *ctx, const uint32 *tokens,
             case 1: mojotype = MOJOSHADER_UNIFORM_INT; break;
             case 2: mojotype = MOJOSHADER_UNIFORM_FLOAT; break;
             case 3: /* SAMPLER */ break;
-            default: goto corrupt_ctab;
+            default: { ctab_bad_line = __LINE__; goto corrupt_ctab; }
         } // switch
 
         if ((setvariables) && (mojotype != MOJOSHADER_UNIFORM_UNKNOWN))
@@ -2415,7 +2419,7 @@ static void parse_constant_table(Context *ctx, const uint32 *tokens,
         sym->register_index = (unsigned int) regidx;
         sym->register_count = (unsigned int) regcnt;
         if (!parse_ctab_typeinfo(ctx, start, bytes, typeinf, &sym->info, 0))
-            goto corrupt_ctab;  // sym->name will get free()'d later.
+            { ctab_bad_line = __LINE__; goto corrupt_ctab; }  // sym->name will get free()'d later.
         else if (ctx->out_of_memory)
             return;  // just bail now.
     } // for
@@ -2423,7 +2427,7 @@ static void parse_constant_table(Context *ctx, const uint32 *tokens,
     return;
 
 corrupt_ctab:
-    fail(ctx, "Shader has corrupt CTAB data");
+    failf(ctx, "Shader has corrupt CTAB data (check at mojoshader.c:%d, version %08x)", ctab_bad_line, (unsigned) ctx->version_token);
 } // parse_constant_table
 
 
