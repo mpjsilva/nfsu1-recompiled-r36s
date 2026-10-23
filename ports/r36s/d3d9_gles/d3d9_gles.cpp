@@ -1448,6 +1448,7 @@ STDMETHODIMP IDirect3DDevice9GLES::Present(const RECT* pSourceRect, const RECT* 
     }
     // Diagnostics only (never used for rendering): the game's detected performance level and the
     // graphics options it derived (see HANDOVER section 6.6).
+#ifndef NFS_GAME_U1  // SPEED2.EXE addresses; past the end of the NFSU1 image
     if (frame == 1500 && std::getenv("NFSU2_DIAG_FRAMES") && g_mem_base) {
         auto rd = [](uint32_t a) { return *reinterpret_cast<const uint32_t*>(g_mem_base + a); };
         std::printf("[NFSU2 OPTIONS] perfLevel=%u cpuMHz=%u vendor=0x%X device=0x%X texFilter=%u (max %u)\n",
@@ -1458,11 +1459,20 @@ STDMETHODIMP IDirect3DDevice9GLES::Present(const RECT* pSourceRect, const RECT* 
         for (uint32_t a = 0x8764f0; a <= 0x876530; a += 4) std::printf(" %X=%u", a & 0xFFF, rd(a));
         std::printf("\n");
     }
+#endif
     static const bool captureDiagnosticFrames = std::getenv("NFSU2_DIAG_FRAMES") != nullptr;
     // Frames 0..800 every 10: the boot/loading screen, the EA Games / THX / legal-screen intro quads and
     // the front-end menus all live there. The old sparse list started at frame 30 and jumped 400 -> 600, so
     // those screens (and the two quad siblings that only draw during the intro) were never captured.
-    if (captureDiagnosticFrames &&
+    // NFSU2_SHOT_FRAMES=a,b,c: back-buffer captures at just these frames (cheaper than the full diagnostic set).
+    static const std::vector<uint32_t> shotFrames = [] {
+        std::vector<uint32_t> v;
+        if (const char* e = std::getenv("NFSU2_SHOT_FRAMES"))
+            for (const char* p = e; *p;) { v.push_back(static_cast<uint32_t>(std::strtoul(p, const_cast<char**>(&p), 10))); while (*p == ',' || *p == ' ') ++p; }
+        return v;
+    }();
+    const bool shotFrame = std::find(shotFrames.begin(), shotFrames.end(), frame) != shotFrames.end();
+    if (shotFrame || captureDiagnosticFrames &&
         ((frame <= 800 && frame % 10 == 0) ||
          (frame <= 1800 && (frame == 30 || frame == 60 || frame == 180 || frame == 400 || frame == 600 ||
                             frame == 800 || frame == 1000 || frame == 1150 || frame == 1250 || frame == 1400 ||

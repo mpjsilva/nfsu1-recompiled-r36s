@@ -4,6 +4,7 @@
 #include <cstdio>
 extern "C" void __gcov_dump(void) __attribute__((weak));  // libgcov, -fprofile-generate builds only
 extern "C" int __llvm_profile_write_file(void) __attribute__((weak));  // clang profile runtime (pgo_clang_vm.sh gen)
+#include <cctype>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -576,6 +577,8 @@ int main(int argc, char** argv) {
                     unsigned f = 0, len = 4; char name[16] = {};
                     if (std::sscanf(item.c_str(), "%u:%15[^:]:%u", &f, name, &len) < 2) continue;
                     const std::string n = name;
+                    // pN: SDL game controller button N (pushed as SDL events, so it takes the real pad path)
+                    if (n.size() > 1 && n[0] == 'p' && std::isdigit(static_cast<unsigned char>(n[1]))) { v.push_back({f, 0x10000u | static_cast<uint32_t>(std::atoi(name + 1)), len}); continue; }
                     uint32_t scan = n == "enter" ? 0x1c : n == "esc" ? 0x01 : n == "up" ? 0xc8 : n == "down" ? 0xd0 :
                                     n == "left" ? 0xcb : n == "right" ? 0xcd : n == "space" ? 0x39 : n == "tab" ? 0x0f :
                                     static_cast<uint32_t>(std::strtoul(name, nullptr, 16));
@@ -591,10 +594,20 @@ int main(int argc, char** argv) {
                 released = true;
             }
             const uint32_t fr = getD3D9PresentCount();
-            for (const Tap& t : taps) {
+            static uint32_t lastFrame = UINT32_MAX;  // the host loop can run several times per presented frame
+            if (fr != lastFrame) for (const Tap& t : taps) {
+                if (t.scan & 0x10000u) {
+                    if (fr == t.frame || fr == t.frame + t.len) {
+                        SDL_Event e{}; e.type = fr == t.frame ? SDL_CONTROLLERBUTTONDOWN : SDL_CONTROLLERBUTTONUP;
+                        e.cbutton.button = static_cast<uint8_t>(t.scan); e.cbutton.state = fr == t.frame ? SDL_PRESSED : SDL_RELEASED; SDL_PushEvent(&e);
+                        if (fr == t.frame) std::printf("[NFSU2] key script %u: pad button %u\n", fr, t.scan & 0xffu);
+                    }
+                    continue;
+                }
                 if (fr == t.frame) { setGuestKey(t.scan, true); std::printf("[NFSU2] key script %u: %02x down\n", fr, t.scan); }
                 if (fr == t.frame + t.len) setGuestKey(t.scan, false);
             }
+            lastFrame = fr;
         } else if (config.autoAdvance) {
             // Profile name: erase the default "NOMBRE" and type "R36s" (Shift+R tests capitals through
             // TranslateMessage; the field holds 7 characters).
