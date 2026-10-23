@@ -51,6 +51,15 @@ void initializeCritical() {initCritical(arg(0),0);ret(0,1);}
 void initializeCriticalSpin() {initCritical(arg(0),arg(1));ret(1,2);}
 void enterCritical() {
     uint32_t address=arg(0); auto mutex=findCritical(address);
+#if defined(NFS_GAME_U1)
+    // Diagnostic while the NFSU1 catalog is completed: a static CRITICAL_SECTION whose initializer was not
+    // lifted reads as zero here. Initialize it as InitializeCriticalSection would, and say where it was.
+    if(!mutex&&memory->writable(address,24)&&!read32(address+8)){
+        NFS_RUNTIME_LOG(ANDROID_LOG_WARN,"NFSU2","EnterCriticalSection %08x without initialization (caller %08x, return %08x): initialized now",
+            address,g_cur_func,read32(g_esp));
+        initCritical(address,0);mutex=findCritical(address);
+    }
+#endif
     if(!mutex) throw GuestStop("EnterCriticalSection without initialization");
     // Contended: hand the machine over (the fair lock gives it to the waiting
     // owner) instead of sleeping 1 ms per attempt; sleep only if it persists.

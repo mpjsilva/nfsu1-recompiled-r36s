@@ -553,6 +553,7 @@ uint32_t callGuest(uint32_t va,const std::vector<uint32_t>& args,uint32_t cleanu
 #include "guest_input.inc"
 #include "guest_audio.inc"
 #include "guest_network.inc"
+#include "guest_nfsu1.inc"
 void testGuestScheduling(){
     State original;original.save();uint32_t savedError=lastError,savedTLS=tlsValues[1087];
     g_eax=0x11223344;g_fs_base=0x21000000;g_st[0]=123.5;g_xmm[7].u64[0]=0x123456789abcdef0ull;
@@ -588,6 +589,7 @@ void testGuestSoundCaps(){
     NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSMW","DirectSound caps passed: mono/stereo, 8/16-bit, continuous rates, software buffers and guest ABI");
 }
 recomp_func_t resolveFunction(const std::string& dll, const std::string& name) {
+    {auto extra=nfsu1Functions.find(dll+"!"+name);if(extra!=nfsu1Functions.end())return extra->second;}
     if((dll=="shfolder.dll"||dll=="shell32.dll")&&name=="SHGetFolderPathA")return shellFolderPath;
     if(dll=="dsound.dll"&&(name=="#1"||name=="DirectSoundCreate"))return directSoundCreate;
     if(dll=="dinput8.dll"&&name=="DirectInput8Create")return directInputCreate;
