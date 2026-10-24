@@ -24,6 +24,11 @@ A native, high-performance static recompilation of **Need for Speed: Underground
 * **Cortex-A35 Math Optimizations**: Native replacements for `ftol2`, matrix transforms, and distance culling for smooth framerates on in-order RK3326 cores.
 * **PortMaster Gamepad Integration**: Preconfigured GPTK controls with analog steering, D-Pad navigation, and shortcut hotkeys.
 
+### 🏁 Need for Speed: Underground (NFSU1)
+The same runtime also runs **NFSU1** (`SPEED.EXE`) on the R36S, built with `ports/r36s/build_nfsu1.sh`:
+playable, with its own music player. Install guide and status: [English](ports/r36s/package-nfsu1/README.md) ·
+[Português](ports/r36s/package-nfsu1/LEIAME.md).
+
 ---
 
 ## Upstream Project (Android & Windows)

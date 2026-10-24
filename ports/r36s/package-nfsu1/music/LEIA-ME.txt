@@ -1,0 +1,12 @@
+Musicas do NFSU1 (player do port)
+
+menu/  -> tocam nos menus
+race/  -> tocam nas corridas
+
+Formatos: .ogg e .mp3 (qualquer taxa, mono ou estereo).
+Se uma pasta estiver vazia, a outra lista e usada no lugar.
+Select + R1 pula para a proxima musica.
+
+Em nfsu1.cfg:
+  NFSU1_MUSIC_VOLUME=70   volume 0-100 (0 desliga)
+  NFSU1_MUSIC_SHUFFLE=1   1 = ordem aleatoria, 0 = ordem do nome do arquivo
