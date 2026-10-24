@@ -384,6 +384,12 @@ void registryOpen(uint32_t output,uint32_t argc){
     if(gameRegistry.empty()){
         const char path[]="C:\\nfsu2\\";gameRegistry.emplace("install dir",RegistryValue{1,{std::begin(path),std::end(path)}});
         auto language=guestLanguage;language.push_back('\0');gameRegistry.emplace("language",RegistryValue{1,{language.begin(),language.end()}});
+#if defined(NFS_GAME_U1)
+        // The stream cache sizes the NFSU1 installer writes, strings the game parses with atoi. No "CD Drive": with it
+        // the game looks for the disc's packed NFSUNDER\ZDIR.BIN on that drive and stops.
+        const char cacheSize[]="1351315456";gameRegistry.emplace("cachesize",RegistryValue{1,{std::begin(cacheSize),std::end(cacheSize)}});
+        const char swapSize[]="0";gameRegistry.emplace("swapsize",RegistryValue{1,{std::begin(swapSize),std::end(swapSize)}});
+#endif
         // Optional defaults for the game's own option values (DWORDs), e.g. the PC graphics options:
         // NFSU2_REGISTRY="g_TextureFiltering=2;g_FogEnable=1". Names are case-insensitive. Values the game
         // writes later (RegSetValueEx) override these for the rest of the session.

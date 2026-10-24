@@ -29,6 +29,7 @@ std::filesystem::path gamePath(std::string guest){
     return resolved;
 }
 std::map<uint32_t,int> fileHandles;uint32_t nextFileHandle=0xf0060000;
+std::set<uint32_t> streamFileHandles;  // .ast handles, for the NFSU2_SOUND_TRACE read log
 // The game skips its CD-drive check when the game folder holds a file named
 // "foobar" (its developer switch, 0x0057CAC0("foobar")). Copies made without
 // it showed the insert-disc MessageBoxA. Present it as an empty file when absent.
@@ -57,8 +58,8 @@ void createFile(){
     switch(disposition){case 1:options|=O_CREAT|O_EXCL;break;case 2:options|=O_CREAT|O_TRUNC;break;case 3:break;case 4:options|=O_CREAT;break;case 5:options|=O_TRUNC;break;default:lastError=87;ret(UINT32_MAX,7);return;}
     bool existed=std::filesystem::exists(path);
     int descriptor=disposition==3&&!(access&0x40000000u)&&discCheckSwitch(path) ? ::open("/dev/null",O_RDONLY|O_CLOEXEC) : ::open(path.c_str(),options|O_CLOEXEC,0600);
-    NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU2","Guest file %s access=%x disposition=%u",path.filename().string().c_str(),access,disposition);
-    if(descriptor<0){lastError=fileError();ret(UINT32_MAX,7);return;}uint32_t handle=nextFileHandle++;fileHandles.emplace(handle,descriptor);lastError=(disposition==2||disposition==4)&&existed?183:0;ret(handle,7);
+    NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU2","Guest file %s access=%x disposition=%u handle=%08x",path.filename().string().c_str(),access,disposition,descriptor<0?0u:nextFileHandle);
+    if(descriptor<0){lastError=fileError();ret(UINT32_MAX,7);return;}uint32_t handle=nextFileHandle++;fileHandles.emplace(handle,descriptor);if(lower(path.extension().string())==".ast")streamFileHandles.insert(handle);lastError=(disposition==2||disposition==4)&&existed?183:0;ret(handle,7);
 }
 void readFile(){
     auto file=fileHandles.find(arg(0));if(file==fileHandles.end()){lastError=6;ret(0,5);return;}if(arg(4))throw GuestStop("Overlapped ReadFile pending");
@@ -66,6 +67,8 @@ void readFile(){
     const auto readStart=std::chrono::steady_clock::now();
     do{count=::read(file->second,ptr(arg(1),arg(2)),arg(2));}while(count<0&&errno==EINTR);
     if(nfsIsGameThread()){nfsWaitAdd(10,std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-readStart).count());if(count>0)nfsWaitAdd(11,uint64_t(count));}
+    static const bool readTrace=std::getenv("NFSU2_SOUND_TRACE")!=nullptr;static std::atomic<unsigned> readTraces{0};
+    if(readTrace&&streamFileHandles.count(arg(0))&&readTraces++<300)NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU2","ReadFile %08x %u bytes -> %zd (errno %d) thread %u",arg(0),arg(2),count,count<0?errno:0,guestThreadId);
     if(count<0){lastError=fileError();ret(0,5);return;}if(arg(3))write32(arg(3),count);ret(1,5);
 }
 void writeFile(){

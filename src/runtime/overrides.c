@@ -173,12 +173,24 @@ static void ov_crt_memmove(void) {
     g_esp += 4;
 }
 
+#if defined(NFS_GAME_U1)
+/* 0x006424A0: the default output of the EA audio/file library's message printer 0x00642450 (reached only
+ * through the hook pointer at 0x006E76AC, as hook("%s", text)). The retail hook discards the text; these are
+ * the library's error reports (e.g. "ASYNCFILE_load - unable to initiate file open"), so send them to the log. */
+static void ov_ea_message(void) {
+    const uint32_t text = MEM32(g_esp + 8);
+    if (text) printf("[NFSU1 EA] %.400s%s", (const char *)ADDR(text), strchr((const char *)ADDR(text), '\n') ? "" : "\n");
+    g_esp += 4;
+}
+#endif
+
 static const struct { uint32_t va; nfs_override_fn fn; } k_overrides[] = {
 #if defined(NFS_GAME_U1)
     /* NFSU1 SPEED.EXE: the same two routines, found by their byte patterns (config/overrides.txt). */
     { 0x00643A39u, ov_is_cyrix },
     { 0x00672630u, ov_crt_memmove },
     { 0x00678D30u, ov_crt_memmove },
+    { 0x006424A0u, ov_ea_message },
 #else
     { 0x006F5FC5u, ov_is_cyrix },
 #if defined(NFS_R36S)

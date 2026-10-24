@@ -79,7 +79,32 @@ static void sdlAudioCallback(void*, Uint8* stream, int len) {
     unsigned frames = unsigned(len / (sizeof(float) * 2));
     soundMixer.render(reinterpret_cast<float*>(stream), frames);
 }
-void serviceGuestSound() {}
+// Every 120 frames: what the mixer plays (voice gain, rate, loudest sample in each ring) and its output peak.
+void serviceGuestSound() {
+    if (!s_sdlAudioDevice) return;
+    std::lock_guard<std::recursive_mutex> l(soundStateMutex);
+    std::lock_guard<std::mutex> lock(soundMixer.mutex);
+    unsigned active = 0, total = 0;
+    std::string detail;
+    for (const auto& voice : soundMixer.voices) {
+        if (!voice) continue;
+        ++total;
+        if (!voice->playing) continue;
+        ++active;
+        int loudest = 0;
+        for (size_t i = 0; i + 1 < voice->samples.size(); i += voice->bits / 8)
+            loudest = std::max(loudest, voice->bits == 8 ? std::abs(int(voice->samples[i]) - 128) * 256
+                                                         : std::abs(int(int16_t(voice->samples[i] | voice->samples[i + 1] << 8))));
+        char item[96];
+        std::snprintf(item, sizeof item, " [%u Hz %ub %uch gain %.2f/%.2f peak %d loop %d]", voice->frequency, voice->bits,
+                      voice->channels, double(voice->left), double(voice->right), loudest, int(voice->loop));
+        if (detail.size() < 600) detail += item;
+    }
+    NFS_RUNTIME_LOG(ANDROID_LOG_INFO, "NFSU2", "Audio mix: %u/%u voices playing, output peak=%.4f clipped=%llu, device %s%s", active, total,
+                    double(soundMixer.peakAmplitude), static_cast<unsigned long long>(soundMixer.clippedSamples),
+                    SDL_GetAudioDeviceStatus(s_sdlAudioDevice) == SDL_AUDIO_PLAYING ? "playing" : "paused/stopped", detail.c_str());
+    soundMixer.peakAmplitude = 0; soundMixer.clippedSamples = 0;
+}
 bool startSoundStream() {
     if (s_sdlAudioDevice) return true;
     if (SDL_WasInit(SDL_INIT_AUDIO) == 0) {
@@ -183,6 +208,8 @@ void soundDispatchBody(){
         if(offset>=bytes||length>bytes){ret(0x80070057,8);return;}uint32_t first=std::min(length,bytes-offset),second=length-first;
         if(second&&(!arg(5)||!arg(6))){ret(0x80070057,8);return;}
         object.locked=true;object.lockOffset=offset;object.lockBytes=length;
+        static const bool soundTrace=std::getenv("NFSU2_SOUND_TRACE")!=nullptr;static unsigned soundTraceLocks=0;
+        if(soundTrace&&soundTraceLocks++<40)NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU2","DirectSound Lock %08x offset=%u length=%u flags=%u from %08x",self,offset,length,flags,read32(g_esp));
         write32(arg(3),object.guestSamples+offset);write32(arg(4),first);if(arg(5))write32(arg(5),second?object.guestSamples:0);if(arg(6))write32(arg(6),second);ret(0,8);return;}
     case 12:{if(arg(1)||arg(2)||arg(3)&~1u){ret(0x80070057,4);return;}std::lock_guard<std::mutex> lock(soundMixer.mutex);voice->loop=arg(3)&1;voice->playing=true;ret(0,4);return;}
     case 13:{if(arg(1)>=voice->samples.size()||arg(1)%voice->block()){ret(0x80070057,2);return;}std::lock_guard<std::mutex> lock(soundMixer.mutex);voice->position=arg(1)/voice->block();ret(0,2);return;}
@@ -201,6 +228,21 @@ void soundDispatchBody(){
         {std::lock_guard<std::mutex> lock(soundMixer.mutex);
             std::memcpy(voice->samples.data()+object.lockOffset,ptr(object.guestSamples+object.lockOffset,first),first);
             if(second)std::memcpy(voice->samples.data(),ptr(object.guestSamples,second),second);}
+        static const bool soundTrace=std::getenv("NFSU2_SOUND_TRACE")!=nullptr;static unsigned soundTraceUnlocks=0;
+        if(soundTrace&&soundTraceUnlocks++<4000){int loudest=0;const uint8_t* q=voice->samples.data();
+            for(uint32_t i=0;i+1<first;i+=2)loudest=std::max(loudest,std::abs(int(int16_t(q[object.lockOffset+i]|q[object.lockOffset+i+1]<<8))));
+            std::string calls;
+#if defined(NFS_GAME_U1)
+            {auto* g=static_cast<uint8_t*>(ptr(0x716400,0x200));uint32_t mix=read32(0x716574);int mixPeak=0;  // NFSU1 EA mixer state
+                if(mix&&memory->readable(mix,1024))for(uint32_t k=0;k<512;++k)mixPeak=std::max(mixPeak,std::abs(int(int16_t(read32(mix+2*k)))));
+                char t[200];std::snprintf(t,sizeof t," enabled=%u ch=%u mix=%08x mixPeak=%d 714080=%d 714084=%d 713ff8=%08x 713d9a=%u 7160d0=%d",g[0x66],g[0x65],mix,mixPeak,
+                    int(read32(0x714080)),int(read32(0x714084)),read32(0x713ff8),read32(0x713d9a)&0xffff,int(read32(0x7160d0)));calls=t;
+                unsigned voices=g[0x64],playing=0;uint32_t table=read32(0x71666c);calls+=" voices="+std::to_string(voices)+" states:";
+                for(unsigned v=0;v<voices&&v<64&&table;++v){uint32_t e=table+0x60*v;unsigned st=read32(e)&0xff;if(st==2)++playing;
+                    if(st){char w[40];std::snprintf(w,sizeof w," %u:%u/%08x/%08x",v,st,read32(e+0x40),read32(e+0x44));calls+=w;}}
+                calls+=" playing="+std::to_string(playing);}
+#endif
+            if(soundTraceUnlocks<40||soundTraceUnlocks%100==0||loudest)NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU2","DirectSound Unlock %08x %u+%u bytes peak=%d; thread %u;%s",self,first,second,loudest,guestThreadId,calls.c_str());}
         auto published=std::chrono::steady_clock::now();
         if(object.lastPublish!=std::chrono::steady_clock::time_point{})object.maxPublishGap=std::max(object.maxPublishGap,
             std::chrono::duration_cast<std::chrono::microseconds>(published-object.lastPublish));
