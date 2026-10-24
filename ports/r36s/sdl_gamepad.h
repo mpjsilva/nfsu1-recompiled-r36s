@@ -113,13 +113,20 @@ private:
             want[0x2a] = buttons_[R2] || past(rightTrigger_, 0x2a);
             want[0x1d] = buttons_[L2] || past(leftTrigger_, 0x1d);
             want[0x01] = buttons_[Start];
+#if defined(NFS_GAME_U1)
+            want[0x0e] = buttons_[Select];   // NFSU1: Select is Backspace everywhere (user's choice), not reset
+#else
             want[0x13] = buttons_[Select];
+#endif
         } else {
             want[0xcb] = buttons_[Left] || past(-stickX_, 0xcb); want[0xcd] = buttons_[Right] || past(stickX_, 0xcd);
             want[0xc8] = buttons_[Up] || past(-stickY_, 0xc8); want[0xd0] = buttons_[Down] || past(stickY_, 0xd0);
             want[0x1c] = buttons_[A] || buttons_[Start];
             want[0x01] = buttons_[B] || buttons_[Y];
             want[0x39] = buttons_[X];
+#if defined(NFS_GAME_U1)
+            want[0x0e] = buttons_[Select];
+#endif
         }
         driving_ = driving;
         for (unsigned scan = 0; scan < 256; ++scan)

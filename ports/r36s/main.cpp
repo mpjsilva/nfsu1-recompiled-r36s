@@ -153,7 +153,14 @@ static void selectSend(bool down) {
 }
 static void selectTick() {
     const auto now = std::chrono::steady_clock::now();
-    if (g_select.held && !g_select.sent && !g_select.combo && now - g_select.since >= std::chrono::milliseconds(200)) {
+#if defined(NFS_GAME_U1)
+    // NFSU1: Select is Backspace (Quit in the menus), a tap with nothing to hold, so it is only sent on release:
+    // a slow Select + R1/R3/Start combo must not open the quit dialog first.
+    constexpr bool kSendOnHold = false;
+#else
+    constexpr bool kSendOnHold = true;
+#endif
+    if (kSendOnHold && g_select.held && !g_select.sent && !g_select.combo && now - g_select.since >= std::chrono::milliseconds(200)) {
         selectSend(true);
         g_select.sent = true;
     }
