@@ -75,9 +75,12 @@ void serviceGuestSound(){
 }
 #elif defined(NFS_SDL_AUDIO)
 static SDL_AudioDeviceID s_sdlAudioDevice = 0;
+// The port's own music (ports/r36s/music_player.cpp), added on top of the game's mix when the build has it.
+extern "C" void nfsHostMusicMix(float* out, unsigned frames, unsigned rate) __attribute__((weak));
 static void sdlAudioCallback(void*, Uint8* stream, int len) {
     unsigned frames = unsigned(len / (sizeof(float) * 2));
     soundMixer.render(reinterpret_cast<float*>(stream), frames);
+    if (nfsHostMusicMix) nfsHostMusicMix(reinterpret_cast<float*>(stream), frames, soundMixer.rate);
 }
 // Every 120 frames: what the mixer plays (voice gain, rate, loudest sample in each ring) and its output peak.
 void serviceGuestSound() {

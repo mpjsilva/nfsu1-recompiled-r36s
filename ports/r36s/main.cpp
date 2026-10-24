@@ -25,6 +25,9 @@ extern "C" int __llvm_profile_write_file(void) __attribute__((weak));  // clang 
 #include "runtime_log.h"
 #include "vkbd.h"
 #include "sdl_gamepad.h"
+#if defined(NFS_GAME_U1)
+#include "music_player.h"
+#endif
 
 #if defined(__linux__)
 #include <sched.h>
@@ -136,7 +139,7 @@ static void vkbdSetVisible(bool visible) {
     std::printf("[NFSU2] Virtual keyboard %s\n", visible ? "opened" : "closed");
 }
 
-// Select is also a combo modifier: Select+Start quits, Select+R3 toggles the frame counter. Its own action
+// Select is also a combo modifier: Select+Start quits, Select+R3 toggles the frame counter (NFSU1: Select+R1 next music track). Its own action
 // (reset car while driving) reaches the game only once no combo can follow: after it has been held for 200 ms,
 // or as a short tap when it is released sooner. A combo cancels it, so the car is not reset.
 struct SelectGate {
@@ -188,6 +191,14 @@ static bool selectHandleButton(uint8_t button, bool down) {
         toggleD3D9FpsCounter();
         return true;
     }
+#if defined(NFS_GAME_U1)
+    if (button == SDL_CONTROLLER_BUTTON_RIGHTSHOULDER) {   // Select + R1: next music track
+        g_select.combo = true;
+        if (g_select.sent) { selectSend(false); g_select.sent = false; }
+        musicNext();
+        return true;
+    }
+#endif
     if (button == SDL_CONTROLLER_BUTTON_START) {       // Select + Start: quit
         g_select.combo = true;
         std::printf("[NFSU2] Hotkey Select+Start triggered. Quitting.\n");
@@ -551,6 +562,9 @@ int main(int argc, char** argv) {
 
     std::printf("[NFSU2] Launching guest executable: %s\n", exePath.c_str());
     g_guestWorker.start(exePath);
+#if defined(NFS_GAME_U1)
+    musicStart(config.gameDir);
+#endif
 
     // Main event loop
     const auto frameDuration = std::chrono::microseconds(1000000 / (config.frameLimit ? config.frameLimit : 60));
@@ -840,6 +854,9 @@ int main(int argc, char** argv) {
         if (g_quitByCombo) g_running = false;
         // Remap held buttons when the game switches between menus and driving.
         if (g_gamepad.refresh(guestDrivingControls(), padSetKey)) publishGamepad();
+#if defined(NFS_GAME_U1)
+        musicSetRace(guestDrivingControls());
+#endif
 
         // Check if D3D9 backend requested surface
         if (d3d9RequestsSurface()) {

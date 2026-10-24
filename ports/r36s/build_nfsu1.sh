@@ -83,6 +83,7 @@ for c in mojoshader.c mojoshader_common.c profiles/mojoshader_profile_common.c p
   compile "$MOJO/$c" "$OUT/obj/$(basename "$c" .c).o" $CC $OPT $MOJODEF -DNFS_R36S -DNFS_GLES -I"$MOJO" & pids+=($!)
 done
 compile "$ROOT/ports/r36s/main.cpp" "$OUT/obj/main.o" $CXX -std=c++17 $OPT $APPDEF $APPINC & pids+=($!)
+compile "$ROOT/ports/r36s/music_player.cpp" "$OUT/obj/music_player.o" $CXX -std=c++17 $OPT $APPDEF $APPINC -w & pids+=($!)
 compile "$ROOT/android/app/src/main/cpp/guest_runtime.cpp" "$OUT/obj/guest_runtime.o" $CXX -std=c++17 $OPT $APPDEF $APPINC & pids+=($!)
 compile "$ROOT/android/app/src/main/cpp/d3d9_bridge.cpp" "$OUT/obj/d3d9_bridge.o" $CXX -std=c++17 $OPT $APPDEF $APPINC & pids+=($!)
 compile "$ROOT/src/runtime/overrides.c" "$OUT/obj/overrides.o" $CC $OPT $APPDEF $APPINC & pids+=($!)
