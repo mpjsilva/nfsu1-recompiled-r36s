@@ -1,0 +1,39 @@
+From 9bdda97fce1ed030cfc2f69dafd52581dcdb54b4 Mon Sep 17 00:00:00 2001
+From: mpjsilva <56980262+mpjsilva@users.noreply.github.com>
+Date: Fri, 23 Oct 2026 16:52:14 -0300
+Subject: [PATCH 16/18] disasm32: only keep_entries (caller-vouched) survive
+ mid-instruction pruning
+
+---
+ tools/disasm/disasm32.py | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/tools/disasm/disasm32.py b/tools/disasm/disasm32.py
+index dbd0309..684df2a 100644
+--- a/tools/disasm/disasm32.py
++++ b/tools/disasm/disasm32.py
+@@ -694,7 +694,7 @@ class Disassembler:
+         return found
+ 
+     def find_functions(self, code_start: int, code_end: int, iat_map: dict = None,
+-                       seeds=(), release_operands: bool = False) -> dict:
++                       seeds=(), release_operands: bool = False, keep_entries=()) -> dict:
+         """
+         Find all functions in the code section.
+         Uses call target analysis + common prologue patterns.
+@@ -907,9 +907,9 @@ class Disassembler:
+         gone = drop_mid_instruction_entries(
+             lambda va, n: self.read_bytes(va, n), sizes, code_start, code_end,
+             callers=callers, weak=weak & set(sizes),
+-            # Explicit seeds have their own evidence (a vtable slot, an initializer table, a runtime log),
+-            # as in interior_starts below: a bogus decode over one must not take the real entry down.
+-            keep=frozenset(seeds) & frozenset(sizes))
++            # Entries the caller vouches for (an initializer table, a runtime log): a bogus decode over one
++            # must not take the real entry down. Structural seeds (vtable scan) are not enough on their own.
++            keep=frozenset(keep_entries) & frozenset(sizes))
+         for a in list(functions):
+             if a not in sizes:
+                 del functions[a]
+-- 
+2.56.0
+

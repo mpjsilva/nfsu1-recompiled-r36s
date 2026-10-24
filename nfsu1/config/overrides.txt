@@ -1,0 +1,6 @@
+# Guest functions of NFSU1's SPEED.EXE (sha256 35654f40...) replaced by hand-written C.
+# Same two cases as NFSU2's config/overrides.txt, found by the same byte patterns.
+# VA        reason
+0x00643A39  Cyrix probe (sahf/div/lahf): DIV flags are undefined and not modelled
+0x00672630  CRT memcpy/memmove: computed jumps into unrolled blocks are not all lifted entries
+0x00678D30  second static CRT memcpy/memmove copy (same body)

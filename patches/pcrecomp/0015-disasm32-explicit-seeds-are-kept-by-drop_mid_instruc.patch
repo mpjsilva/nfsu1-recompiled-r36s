@@ -1,0 +1,29 @@
+From 985bb24d7504c12fd0409ce6e54cd0e4e75acc0b Mon Sep 17 00:00:00 2001
+From: mpjsilva <56980262+mpjsilva@users.noreply.github.com>
+Date: Fri, 23 Oct 2026 16:30:56 -0300
+Subject: [PATCH 15/18] disasm32: explicit seeds are kept by
+ drop_mid_instruction_entries
+
+---
+ tools/disasm/disasm32.py | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/tools/disasm/disasm32.py b/tools/disasm/disasm32.py
+index 2026e51..dbd0309 100644
+--- a/tools/disasm/disasm32.py
++++ b/tools/disasm/disasm32.py
+@@ -906,7 +906,10 @@ class Disassembler:
+                 callers.setdefault(t, set()).add(a)
+         gone = drop_mid_instruction_entries(
+             lambda va, n: self.read_bytes(va, n), sizes, code_start, code_end,
+-            callers=callers, weak=weak & set(sizes))
++            callers=callers, weak=weak & set(sizes),
++            # Explicit seeds have their own evidence (a vtable slot, an initializer table, a runtime log),
++            # as in interior_starts below: a bogus decode over one must not take the real entry down.
++            keep=frozenset(seeds) & frozenset(sizes))
+         for a in list(functions):
+             if a not in sizes:
+                 del functions[a]
+-- 
+2.56.0
+

@@ -1,0 +1,53 @@
+From 354e9cdc0752a6c1b771ce132c5967c3e91d6f60 Mon Sep 17 00:00:00 2001
+From: mpjsilva <56980262+mpjsilva@users.noreply.github.com>
+Date: Fri, 23 Oct 2026 17:33:50 -0300
+Subject: [PATCH 18/18] disasm32: entries inside a jump table's own bytes are
+ dropped
+
+---
+ tools/disasm/disasm32.py | 22 ++++++++++++++++++++--
+ 1 file changed, 20 insertions(+), 2 deletions(-)
+
+diff --git a/tools/disasm/disasm32.py b/tools/disasm/disasm32.py
+index c497b42..031d426 100644
+--- a/tools/disasm/disasm32.py
++++ b/tools/disasm/disasm32.py
+@@ -451,8 +451,14 @@ class Disassembler:
+         op = insn.operands[0]
+         if op.type != X86_OP_MEM or op.mem.scale != 4 or not op.mem.index:
+             return []
+-        return table_entries(self.read_bytes, op.mem.disp & 0xFFFFFFFF,
+-                             self.is_code_address, limit)
++        table = op.mem.disp & 0xFFFFFFFF
++        out = table_entries(self.read_bytes, table, self.is_code_address, limit)
++        if out and self.is_code_address(table):
++            # The table's own bytes are data; a pointer-shaped scan hit inside it is no function
++            # (NFSU1 0x005C9700, in the table at 0x005C96F4, swallowed the real 0x005C9718).
++            spans = self.__dict__.setdefault("_table_spans", {})
++            spans[table] = max(spans.get(table, 0), 4 * len(out))
++        return out
+ 
+     def disassemble_function(self, start_va: int, iat_map: dict = None) -> Optional[Function]:
+         """
+@@ -899,6 +905,18 @@ class Disassembler:
+ 
+         print(f"[*] Successfully disassembled {len(functions)} functions"
+               f" ({round_no} discovery rounds)")
++        spans = sorted(getattr(self, "_table_spans", {}).items())
++        if spans:
++            import bisect
++            starts = [t for t, _ in spans]
++            def in_table(a):
++                k = bisect.bisect_right(starts, a) - 1
++                return k >= 0 and a < spans[k][0] + spans[k][1]
++            in_tables = [a for a in functions if in_table(a) and a not in keep_entries]
++            for a in in_tables:
++                del functions[a]
++            if in_tables:
++                print(f"[*] Dropped {len(in_tables)} entries inside jump tables")
+         sizes = {a: f.size for a, f in functions.items()}
+         callers = {}
+         for a, f in functions.items():
+-- 
+2.56.0
+

@@ -1,0 +1,35 @@
+From d6646d84c727955e12be45fd0a8ba6c21786784b Mon Sep 17 00:00:00 2001
+From: mpjsilva <56980262+mpjsilva@users.noreply.github.com>
+Date: Fri, 23 Oct 2026 17:13:20 -0300
+Subject: [PATCH 17/18] disasm32: jump tables up to 1024 entries (NFSU1's D3DX
+ error switch has 288)
+
+---
+ tools/disasm/disasm32.py | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/tools/disasm/disasm32.py b/tools/disasm/disasm32.py
+index 684df2a..c497b42 100644
+--- a/tools/disasm/disasm32.py
++++ b/tools/disasm/disasm32.py
+@@ -180,7 +180,7 @@ class Function:
+         return sum(len(b.instructions) for b in self.blocks.values())
+ 
+ 
+-def table_entries(read, table, is_code, limit=256):
++def table_entries(read, table, is_code, limit=1024):
+     """The code addresses in a jump table at `table`, read with read(va, n).
+ 
+     Stop at the first entry that is not a code address -- that is where the
+@@ -438,7 +438,7 @@ class Disassembler:
+                 operands=list(insn.operands) if insn.operands else [],
+             )
+ 
+-    def jump_table_targets(self, insn, limit: int = 256) -> list:
++    def jump_table_targets(self, insn, limit: int = 1024) -> list:
+         """Entries of the jump table an indirect `jmp` dispatches through.
+ 
+         MSVC puts the table in .text beside the function. Nothing names the arms
+-- 
+2.56.0
+
