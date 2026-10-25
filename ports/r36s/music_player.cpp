@@ -34,6 +34,10 @@
 #define DR_MP3_NO_STDIO_WIDE
 #include "third_party/dr_mp3.h"
 
+// Defined by the GLES renderer (d3d9_gles.cpp): show the current track's name on screen for a few seconds.
+// Weak so host builds and tests that leave the renderer out still link.
+extern "C" void nfsHostMusicNowPlaying(const char* name) __attribute__((weak));
+
 namespace {
 
 // One open file, decoded to interleaved stereo float at its own rate.
@@ -139,6 +143,9 @@ bool openNext(Playlist& list, bool advance) {
         if (list.decoder.open(path)) {
             std::printf("[NFSU1 MUSIC] %s %zu/%zu: %s (%u Hz, %u ch)\n", list.name, list.position + 1, list.files.size(),
                         path.filename().c_str(), list.decoder.rate, list.decoder.channels);
+            // Show the track on screen (the renderer draws the banner). The name is the file name without its
+            // extension, so renaming a file to the real song title makes that title appear.
+            if (nfsHostMusicNowPlaying) nfsHostMusicNowPlaying(path.stem().string().c_str());
             list.playing = list.started = true; list.phase = 1.0; list.chunkPos = list.chunkLen = 0;
             return true;
         }

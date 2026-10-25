@@ -17,6 +17,11 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <cctype>
+#include <string>
 
 class SdlGamepad {
 public:
@@ -89,6 +94,59 @@ private:
     std::array<bool, 256> sent_{};
     bool driving_ = false;
 
+    // Driving actions: a fixed PC scancode each (DirectInput DIK_*), and a configurable pad button
+    // (NFSU1_CONTROLS). The shift-up/down keys differ between the games: NFSU1 uses Insert/Delete (0xd2/0xd3),
+    // NFSU2 uses Left Shift/Left Ctrl (0x2a/0x1d). Manual transmission (or a drag race) must be on for the
+    // gear keys to do anything in game.
+    enum Action { Accelerate, Brake, Handbrake, Camera, Nitro, LookBack, GearUp, GearDown, ActionCount };
+#if defined(NFS_GAME_U1)
+    static constexpr uint8_t actionScan_[ActionCount] = {0xc8,0xd0,0x39,0x2e,0x38,0x30,0xd2,0xd3};
+#else
+    static constexpr uint8_t actionScan_[ActionCount] = {0xc8,0xd0,0x39,0x2e,0x38,0x30,0x2a,0x1d};
+#endif
+    unsigned actionButton_[ActionCount] = {A, X, B, Y, R1, L1, R2, L2};  // defaults = original layout
+#if defined(NFS_GAME_U1)
+    uint8_t selectScan_ = 0x0e;   // Select while driving: Backspace (0x0e), R reset (0x13) or off (0)
+#else
+    uint8_t selectScan_ = 0x13;
+#endif
+    bool controlsLoaded_ = false;
+
+    static unsigned buttonByLabel(const std::string& s) {  // physical R36S labels -> enum
+        if (s=="B") return A; if (s=="A") return B; if (s=="Y") return X; if (s=="X") return Y;
+        if (s=="L1") return L1; if (s=="R1") return R1; if (s=="L2") return L2; if (s=="R2") return R2;
+        if (s=="SELECT") return Select; if (s=="START") return Start;
+        return ButtonCount;  // invalid: keep the default
+    }
+    void loadControls() {
+        controlsLoaded_ = true;
+        const char* path = std::getenv("NFSU1_CONTROLS");
+        if (!path || !*path) return;
+        std::FILE* f = std::fopen(path, "r");
+        if (!f) return;
+        char line[128];
+        auto trim = [](std::string s) {
+            size_t a = s.find_first_not_of(" \t\r\n"); if (a == std::string::npos) return std::string();
+            size_t b = s.find_last_not_of(" \t\r\n"); return s.substr(a, b - a + 1);
+        };
+        while (std::fgets(line, sizeof line, f)) {
+            if (char* h = std::strchr(line, '#')) *h = 0;
+            char* eq = std::strchr(line, '='); if (!eq) continue; *eq = 0;
+            std::string key = trim(line), val = trim(eq + 1);
+            for (char& c : key) c = char(std::tolower((unsigned char)c));
+            for (char& c : val) c = char(std::toupper((unsigned char)c));
+            int a = key=="accelerate"?Accelerate:key=="brake"?Brake:key=="handbrake"?Handbrake:
+                    key=="camera"?Camera:key=="nitro"?Nitro:key=="lookback"?LookBack:
+                    key=="gearup"?GearUp:key=="geardown"?GearDown:-1;
+            if (a >= 0) { unsigned b = buttonByLabel(val); if (b != ButtonCount) actionButton_[a] = b; }
+            else if (key == "select") selectScan_ = val=="RESET"?0x13:val=="NONE"?0:0x0e;
+        }
+        std::fclose(f);
+        std::printf("[NFSU1] controls loaded from %s (accel=%u brake=%u hbrake=%u cam=%u nitro=%u look=%u gup=%u gdn=%u select=0x%02x)\n",
+                    path, actionButton_[0],actionButton_[1],actionButton_[2],actionButton_[3],
+                    actionButton_[4],actionButton_[5],actionButton_[6],actionButton_[7], selectScan_);
+    }
+
     static float dead(float v) { return std::fabs(v) < 0.10f ? 0.0f : v; }
 
     template<class SetKey> void apply(bool driving, SetKey& setKey) {
@@ -96,28 +154,25 @@ private:
         // Hysteresis keeps a stick resting near the threshold from chattering.
         auto past = [&](float value, unsigned scan) { return value > (sent_[scan] ? .25f : .4f); };
         if (driving) {
-            // PC default keys: Up/Down throttle/brake, Space e-brake, Left Alt nitrous, C camera,
-            // B look back, Left Shift / Left Ctrl shift up/down, Escape pause, R reset; free-roam actions
-            // Enter engage event / shop, 1 career status, M world map, Tab SMS (on the d-pad, as on the consoles).
-            // The stick steers through the joystick (proportional).
-            want[0xc8] = buttons_[A];
-            want[0xd0] = buttons_[X];
+            // PC default keys: Up/Down throttle/brake, Space e-brake, Left Alt nitrous, C camera, B look back,
+            // Left Shift / Left Ctrl shift up/down, Escape pause, R reset; free-roam actions Enter engage event
+            // / shop, 1 career status, M world map, Tab SMS (on the d-pad, as on the consoles). The stick steers
+            // through the joystick (proportional). Which pad button drives each action is configurable through
+            // NFSU1_CONTROLS (the config menu writes it); the defaults below reproduce the original layout.
+            if (!controlsLoaded_) loadControls();
+            for (int a = 0; a < ActionCount; ++a) {
+                const unsigned b = actionButton_[a]; const uint8_t scan = actionScan_[a];
+                bool held = buttons_[b];
+                if (b == R2) held = held || past(rightTrigger_, scan);
+                if (b == L2) held = held || past(leftTrigger_, scan);
+                want[scan] = held;
+            }
             want[0x1c] = buttons_[Up];
             want[0x02] = buttons_[Down];
             want[0x32] = buttons_[Left];
             want[0x0f] = buttons_[Right];
-            want[0x39] = buttons_[B];
-            want[0x2e] = buttons_[Y];
-            want[0x38] = buttons_[R1];
-            want[0x30] = buttons_[L1];
-            want[0x2a] = buttons_[R2] || past(rightTrigger_, 0x2a);
-            want[0x1d] = buttons_[L2] || past(leftTrigger_, 0x1d);
             want[0x01] = buttons_[Start];
-#if defined(NFS_GAME_U1)
-            want[0x0e] = buttons_[Select];   // NFSU1: Select is Backspace everywhere (user's choice), not reset
-#else
-            want[0x13] = buttons_[Select];
-#endif
+            if (selectScan_) want[selectScan_] = buttons_[Select];
         } else {
             want[0xcb] = buttons_[Left] || past(-stickX_, 0xcb); want[0xcd] = buttons_[Right] || past(stickX_, 0xcd);
             want[0xc8] = buttons_[Up] || past(-stickY_, 0xc8); want[0xd0] = buttons_[Down] || past(stickY_, 0xd0);

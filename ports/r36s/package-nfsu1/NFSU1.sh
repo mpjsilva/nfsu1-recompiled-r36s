@@ -36,6 +36,169 @@ else
 fi
 cd "$GAMEDIR"
 
+# ---------------------------------------------------------------------------
+# Pre-game menu (one script, like the Daytona port): remap the driving controls, back up / restore the save
+# to this folder, or change settings, then start the game. It runs on the console (tty1) with the pad acting
+# as the keyboard through gptokeyb, as the dArkOS tools do (A = choose, B = back). The controls go to
+# controls.cfg (the binary reads it through NFSU1_CONTROLS) and the settings to nfsu1.cfg (sourced below).
+# NFSU1_NO_MENU=1 skips the menu and starts the game with the last choices.
+# ---------------------------------------------------------------------------
+SAVEDIR="$GAMEDIR/gamedata/NFS Underground"
+CFG="$GAMEDIR/nfsu1.cfg"
+CONTROLS="$GAMEDIR/controls.cfg"
+
+dlg() { dialog --clear --colors --no-collapse --backtitle "NFS Underground - R36S" "$@" 2>&1 >"$CURR_TTY" <"$CURR_TTY"; }
+
+# The menu drives dialog with the pad as a keyboard through gptokeyb (A = enter, B = esc). Capturing a raw
+# button needs the pad free, so these start / stop gptokeyb around a capture.
+MENU_KEYS=/tmp/nfsu1-keys.gptk
+MENU_GPTK=""
+menu_pad_on() {
+  [ -x /opt/inttools/gptokeyb ] && [ -f /opt/inttools/keys.gptk ] || return 0
+  cp /opt/inttools/keys.gptk "$MENU_KEYS"; sed -i 's/^a = .*/a = enter/; s/^b = .*/b = esc/' "$MENU_KEYS"
+  pkill -9 -f gptokeyb 2>/dev/null
+  SDL_GAMECONTROLLERCONFIG_FILE=/opt/inttools/gamecontrollerdb.txt /opt/inttools/gptokeyb -1 "dialog" -c "$MENU_KEYS" >/dev/null 2>&1 &
+  MENU_GPTK=$!
+}
+menu_pad_off() {
+  [ -n "$MENU_GPTK" ] && { kill -9 "$MENU_GPTK" 2>/dev/null; wait "$MENU_GPTK" 2>/dev/null; MENU_GPTK=""; }
+  pkill -9 -f gptokeyb 2>/dev/null
+}
+# A stored button label shown as its position, so it reads the same whatever the A/B letters are swapped to.
+btn_face() {
+  case "$1" in
+    B) echo "baixo" ;; A) echo "direita" ;; Y) echo "esquerda" ;; X) echo "cima" ;;
+    *) echo "$1" ;;
+  esac
+}
+
+# controls.cfg: action=BUTTON lines, physical R36S labels (absent = original layout).
+ctl_get() { local v=""; [ -f "$CONTROLS" ] && v=$(grep -iE "^$1=" "$CONTROLS" | tail -1 | cut -d= -f2 | tr -d ' \r'); echo "${v:-$2}"; }
+ctl_set() { touch "$CONTROLS"; grep -ivE "^$1=" "$CONTROLS" > "$CONTROLS.tmp" 2>/dev/null; mv "$CONTROLS.tmp" "$CONTROLS"; echo "$1=$2" >> "$CONTROLS"; }
+
+pick_button() {  # action label current
+  # Capture the physical button the player presses, read through the game's own SDL layer (./nfsu1.aarch64
+  # --read-button). The menu's gptokeyb must release the pad first, then it is restored.
+  local got
+  menu_pad_off
+  # infobox without --clear so the prompt stays on screen during the 15 s capture window.
+  dialog --colors --no-collapse --backtitle "NFS Underground - R36S" --title " $2 " \
+    --infobox "\nAperte agora o botao para:\n\n   $2\n\n(atual: $(btn_face "$3"))\n\nAguardando o botao..." 11 48 >"$CURR_TTY" <"$CURR_TTY"
+  got=$(cd "$GAMEDIR" && ./nfsu1.aarch64 --read-button 2>/dev/null | sed -n 's/^BUTTON=//p' | tail -1)
+  menu_pad_on
+  case "$got" in
+    A|B|X|Y|L1|R1|L2|R2) ctl_set "$1" "$got"; dlg --title " $2 " --msgbox "\n$2 = botao $(btn_face "$got")" 7 44 ;;
+    *) dlg --title " $2 " --msgbox "\nNenhum botao detectado (tempo esgotado).\nMantido: $(btn_face "$3")" 8 48 ;;
+  esac
+}
+
+controls_menu() {
+  local a b h cam n l gu gd sel C s
+  while true; do
+    a=$(ctl_get accelerate B); b=$(ctl_get brake Y); h=$(ctl_get handbrake A); cam=$(ctl_get camera X)
+    n=$(ctl_get nitro R1); l=$(ctl_get lookback L1); gu=$(ctl_get gearup R2); gd=$(ctl_get geardown L2)
+    sel=$(ctl_get select BACKSPACE)
+    C=$(dlg --title " Controles (corrida) " --ok-label "Editar" --cancel-label "Voltar" --default-item "${CITEM:-1}" \
+        --menu "\nA: editar   B: voltar   (direcao = analogico esquerdo)" 20 54 10 \
+        1 "Acelerar .......... $(btn_face "$a")" 2 "Frear / re ........ $(btn_face "$b")" 3 "Freio de mao ...... $(btn_face "$h")" \
+        4 "Camera ............ $(btn_face "$cam")" 5 "Nitro ............. $(btn_face "$n")" 6 "Olhar para tras ... $(btn_face "$l")" \
+        7 "Subir marcha ...... $(btn_face "$gu")" 8 "Descer marcha ..... $(btn_face "$gd")" 9 "Select = $sel" \
+        0 "Restaurar padrao") || break
+    CITEM="$C"
+    case "$C" in
+      1) pick_button accelerate "Acelerar" "$a" ;;
+      2) pick_button brake "Frear / re" "$b" ;;
+      3) pick_button handbrake "Freio de mao" "$h" ;;
+      4) pick_button camera "Camera" "$cam" ;;
+      5) pick_button nitro "Nitro" "$n" ;;
+      6) pick_button lookback "Olhar para tras" "$l" ;;
+      7) pick_button gearup "Subir marcha" "$gu" ;;
+      8) pick_button geardown "Descer marcha" "$gd" ;;
+      9) s=$(dlg --title " Select " --ok-label "OK" --cancel-label "Voltar" --menu "\nO botao Select na corrida:" 12 46 3 \
+            BACKSPACE "Backspace (abandonar)" RESET "Resetar carro (R)" NONE "Nada") && ctl_set select "$s" ;;
+      0) rm -f "$CONTROLS"; dlg --title " Controles " --msgbox "\nLayout padrao restaurado." 7 40 ;;
+    esac
+  done
+}
+
+export_save() {
+  if [ ! -d "$SAVEDIR" ]; then dlg --title " Exportar save " --msgbox "\nNenhum save ainda.\n(Jogue uma vez para criar o perfil.)" 8 46; return; fi
+  local zip="$GAMEDIR/NFSU1-save-$(date +%Y%m%d-%H%M%S).zip"
+  ( cd "$GAMEDIR/gamedata" && zip -r -q "$zip" "NFS Underground" ) \
+    && dlg --title " Exportar save " --msgbox "\nSave exportado para a pasta do port:\n\n$(basename "$zip")" 9 54 \
+    || dlg --title " Exportar save " --msgbox "\nFalha ao exportar o save." 7 40
+}
+
+import_save() {
+  local zip
+  zip=$(ls -1t "$GAMEDIR"/NFSU1-save-*.zip 2>/dev/null | head -1)
+  if [ -z "$zip" ]; then dlg --title " Importar save " --msgbox "\nNenhum NFSU1-save-*.zip nesta pasta para importar." 8 50; return; fi
+  dlg --title " Importar save " --defaultno --yesno "\nRestaurar o save a partir de:\n$(basename "$zip")\n\nIsto substitui o save atual. Continuar?" 11 54 || return
+  rm -rf "$SAVEDIR"
+  ( cd "$GAMEDIR/gamedata" && unzip -o -q "$zip" ) \
+    && dlg --title " Importar save " --msgbox "\nSave restaurado." 7 40 \
+    || dlg --title " Importar save " --msgbox "\nFalha ao importar o save." 7 40
+}
+
+# nfsu1.cfg: shell assignments, sourced by this launcher below.
+cfg_get() { local v=""; [ -f "$CFG" ] && v=$(grep -iE "^$1=" "$CFG" | tail -1 | cut -d= -f2 | tr -d ' \r'); echo "${v:-$2}"; }
+cfg_set() { touch "$CFG"; grep -ivE "^$1=" "$CFG" > "$CFG.tmp" 2>/dev/null; mv "$CFG.tmp" "$CFG"; echo "$1=$2" >> "$CFG"; }
+
+settings_menu() {
+  local fps lang vol shuf shuflbl C g v
+  while true; do
+    fps=$(cfg_get NFSU1_FPS 30); lang=$(cfg_get NFSU1_LANG English); vol=$(cfg_get NFSU1_MUSIC_VOLUME 70)
+    shuf=$(cfg_get NFSU1_MUSIC_SHUFFLE 1); [ "$shuf" = 0 ] && shuflbl="em ordem" || shuflbl="aleatoria"
+    C=$(dlg --title " Configuracoes " --ok-label "Alterar" --cancel-label "Voltar" --default-item "${SITEM:-1}" \
+        --menu "\nA: alterar   B: voltar" 14 54 5 \
+        1 "Limite de FPS ...... $fps" 2 "Idioma ............. $lang" 3 "Volume da musica ... $vol" \
+        4 "Ordem das musicas .. $shuflbl") || break
+    SITEM="$C"
+    case "$C" in
+      1) [ "$fps" = 30 ] && cfg_set NFSU1_FPS 60 || cfg_set NFSU1_FPS 30 ;;
+      2) g=$(dlg --title " Idioma " --menu "" 15 40 7 English English Spanish Spanish French French German German Italian Italian Dutch Dutch Swedish Swedish) && cfg_set NFSU1_LANG "$g" ;;
+      3) v=$(dlg --title " Volume da musica " --menu "\n0 desliga o player" 14 40 6 0 "0%" 30 "30%" 50 "50%" 70 "70%" 85 "85%" 100 "100%") && cfg_set NFSU1_MUSIC_VOLUME "$v" ;;
+      4) [ "$shuf" = 0 ] && cfg_set NFSU1_MUSIC_SHUFFLE 1 || cfg_set NFSU1_MUSIC_SHUFFLE 0 ;;
+    esac
+  done
+}
+
+# The menu itself: sets up the console + pad, loops, and cleans up. Returns 0 to start the game, 1 to quit.
+pre_menu() {
+  local C RC START=0
+  [ -e "$CURR_TTY" ] || return 0
+  sudo chmod 666 "$CURR_TTY" /dev/uinput 2>/dev/null
+  export TERM=linux LANG=en_US.UTF-8
+  sudo setfont /usr/share/consolefonts/Lat15-TerminusBold22x11.psf.gz 2>/dev/null
+  printf '\033%%G\033[?25l\033[H\033[2J' > "$CURR_TTY"
+  [ -f /opt/inttools/noshadows.dialogrc ] && export DIALOGRC=/opt/inttools/noshadows.dialogrc
+  menu_pad_on
+  while true; do
+    C=$(dlg --title " NFS Underground " --ok-label "OK" --cancel-label "Sair" --default-item "${MITEM:-1}" \
+        --menu "\nA: escolher   B: sair" 15 52 6 \
+        1 "Iniciar o jogo" 2 "Controles" 3 "Exportar save (backup)" \
+        4 "Importar save (restaurar)" 5 "Configuracoes"); RC=$?
+    [ $RC -ne 0 ] && break
+    MITEM="$C"
+    case "$C" in
+      1) START=1; break ;;
+      2) controls_menu ;;
+      3) export_save ;;
+      4) import_save ;;
+      5) settings_menu ;;
+    esac
+  done
+  menu_pad_off
+  rm -f "$MENU_KEYS"
+  printf '\033[H\033[2J\033[?25h' > "$CURR_TTY"
+  [ "$START" = 1 ] || return 1
+  return 0
+}
+
+if [ -z "${NFSU1_NO_MENU:-}" ]; then
+  pre_menu || exit 0
+fi
+
 # Per-run diagnostics: timestamped logs/ folder, console tee, kernel log and exit code on exit.
 [ -f "$GAMEDIR/port-diagnostics.sh" ] && source "$GAMEDIR/port-diagnostics.sh"
 
@@ -146,6 +309,8 @@ NFSU1_MUSIC_SHUFFLE=1
 # The port's own music player: OGG/MP3 files in music/menu (front end) and music/race (races).
 mkdir -p "$GAMEDIR/music/menu" "$GAMEDIR/music/race"
 export NFSU1_MUSIC_DIR="$GAMEDIR/music" NFSU1_MUSIC_VOLUME NFSU1_MUSIC_SHUFFLE
+# Gamepad button -> action remap written by "NFSU1 Config" (absent = original layout).
+[ -f "$GAMEDIR/controls.cfg" ] && export NFSU1_CONTROLS="$GAMEDIR/controls.cfg"
 export NFSU2_ASPECT=4:3
 [ -n "${NFSU2_SHOW_FPS:-}" ] && export NFSU2_SHOW_FPS
 CAP_ARG="--cap60"; [ "$NFSU1_FPS" = "30" ] && CAP_ARG="--cap30"
@@ -195,4 +360,19 @@ echo 1 | sudo tee /sys/class/vtconsole/vtcon1/bind > /dev/null 2>&1 || true
 $ESUDO systemctl restart oga_events >/dev/null 2>&1 &
 printf "\033c" > "$CURR_TTY" 2>/dev/null || true
 printf "\e[?25h" > "$CURR_TTY" 2>/dev/null || true
+
+# Return to the EmulationStation ports menu. The front end launches this script and waits, but the game
+# held the display through KMSDRM, so on some firmware it comes back to a blank console instead of redrawing
+# its menu. Restarting the front end guarantees the ports list is shown. The restart runs in its own
+# transient scope (systemd-run) so it survives the front end's process group being torn down, and the short
+# delay lets this script exit first; the plain restart is a fallback when systemd-run is unavailable.
+if systemctl list-unit-files emulationstation.service >/dev/null 2>&1; then
+  if command -v systemd-run >/dev/null 2>&1; then
+    sudo systemd-run --collect --quiet --unit="nfsu1-return-$$" \
+      /bin/sh -c 'sleep 1; systemctl restart emulationstation' >/dev/null 2>&1 \
+      || ( sleep 1; sudo systemctl restart emulationstation >/dev/null 2>&1 & )
+  else
+    ( sleep 1; sudo systemctl restart emulationstation >/dev/null 2>&1 & )
+  fi
+fi
 exit $EXIT_CODE

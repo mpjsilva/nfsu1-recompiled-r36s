@@ -93,6 +93,13 @@ void setFilePointer(){
     int64_t distance=int32_t(arg(1));if(high){uint64_t bits=(uint64_t(read32(high))<<32)|arg(1);std::memcpy(&distance,&bits,8);}
     off_t result=::lseek(file->second,off_t(distance),method==0?SEEK_SET:method==1?SEEK_CUR:SEEK_END);
     if(result<0){lastError=errno==EINVAL?131:fileError();ret(UINT32_MAX,4);return;}
+    // Diagnostic: every seek on a music/stream .ast. The EA Trax songs are concatenated at known SCHl byte
+    // offsets, so a seek offset identifies which song the game's DJ selected to play (and shows on screen);
+    // this tells us whether that signal reaches the file layer or stays in the idle streaming thread.
+    static const bool seekTrace=std::getenv("NFSU2_SOUND_TRACE")!=nullptr;static std::atomic<unsigned> seekTraces{0};
+    if(seekTrace&&streamFileHandles.count(arg(0))&&seekTraces++<500)
+        NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU2","AstSeek handle=%08x -> offset=%lld (dist=%lld method=%u) thread=%u",
+                        arg(0),(long long)result,(long long)distance,method,guestThreadId);
     if(!high&&uint64_t(result)>UINT32_MAX){lastError=87;ret(UINT32_MAX,4);return;}
     if(high)write32(high,uint64_t(result)>>32);lastError=0;ret(uint32_t(result),4);
 }

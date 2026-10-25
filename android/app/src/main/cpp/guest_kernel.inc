@@ -387,8 +387,14 @@ void registryOpen(uint32_t output,uint32_t argc){
 #if defined(NFS_GAME_U1)
         // The stream cache sizes the NFSU1 installer writes, strings the game parses with atoi. No "CD Drive": with it
         // the game looks for the disc's packed NFSUNDER\ZDIR.BIN on that drive and stops.
-        const char cacheSize[]="1351315456";gameRegistry.emplace("cachesize",RegistryValue{1,{std::begin(cacheSize),std::end(cacheSize)}});
-        const char swapSize[]="0";gameRegistry.emplace("swapsize",RegistryValue{1,{std::begin(swapSize),std::end(swapSize)}});
+        // The stream cache sizes the NFSU1 installer writes, strings the game parses with atoi. Overridable with
+        // NFSU1_CACHESIZE / NFSU1_SWAPSIZE for debugging (changing them does NOT, on its own, make the game read
+        // the music .ast here — the EA streaming I/O stays idle; see notes). No "CD Drive": with it the game
+        // looks for the disc's packed NFSUNDER\ZDIR.BIN on that drive and stops.
+        const char* cs=std::getenv("NFSU1_CACHESIZE");const char cacheSize[]="1351315456";
+        gameRegistry.emplace("cachesize",RegistryValue{1,cs?std::vector<uint8_t>(cs,cs+std::strlen(cs)+1):std::vector<uint8_t>{std::begin(cacheSize),std::end(cacheSize)}});
+        const char* ss=std::getenv("NFSU1_SWAPSIZE");const char swapSize[]="0";
+        gameRegistry.emplace("swapsize",RegistryValue{1,ss?std::vector<uint8_t>(ss,ss+std::strlen(ss)+1):std::vector<uint8_t>{std::begin(swapSize),std::end(swapSize)}});
 #endif
         // Optional defaults for the game's own option values (DWORDs), e.g. the PC graphics options:
         // NFSU2_REGISTRY="g_TextureFiltering=2;g_FogEnable=1". Names are case-insensitive. Values the game

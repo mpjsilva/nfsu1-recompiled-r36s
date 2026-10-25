@@ -430,6 +430,49 @@ int main(int argc, char** argv) {
         else if (arg.rfind("--lang=", 0) == 0) config.language = arg.substr(7);
     }
 
+    // Button-capture mode for the control editor (NFSU1.sh): open the pad through the SAME SDL layer the game
+    // uses, wait for one button, print its R36S label as "BUTTON=<label>" and exit. This lets the editor assign
+    // the physical button the player actually presses, regardless of any front-end A/B swap. No window opens;
+    // diagnostics go to stderr, so the shell reads only the BUTTON= line.
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) != "--read-button") continue;
+        if (SDL_Init(SDL_INIT_GAMECONTROLLER | SDL_INIT_JOYSTICK) < 0) { std::fprintf(stderr, "SDL init: %s\n", SDL_GetError()); return 1; }
+        const char* dbPaths[] = {"gamecontrollerdb.txt", "gamedata/gamecontrollerdb.txt",
+                                 "/opt/inttools/gamecontrollerdb.txt", "/roms/ports/PortMaster/gamecontrollerdb.txt",
+                                 "/roms2/ports/PortMaster/gamecontrollerdb.txt"};
+        for (const char* db : dbPaths) if (std::filesystem::exists(db)) { SDL_GameControllerAddMappingsFromFile(db); break; }
+        SDL_GameController* pad = nullptr;
+        for (int j = 0; j < SDL_NumJoysticks() && !pad; ++j) pad = openPad(j);
+        const char* label = nullptr;
+        const Uint32 deadline = SDL_GetTicks() + 15000;
+        SDL_Event e;
+        while (!label && SDL_GetTicks() < deadline) {
+            while (SDL_PollEvent(&e)) {
+                if (e.type == SDL_CONTROLLERBUTTONDOWN) {
+                    switch (e.cbutton.button) {
+                        case SDL_CONTROLLER_BUTTON_A: label = "B"; break;  // south -> R36S silkscreen 'B'
+                        case SDL_CONTROLLER_BUTTON_B: label = "A"; break;  // east  -> 'A'
+                        case SDL_CONTROLLER_BUTTON_X: label = "Y"; break;  // west  -> 'Y'
+                        case SDL_CONTROLLER_BUTTON_Y: label = "X"; break;  // north -> 'X'
+                        case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: label = "L1"; break;
+                        case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: label = "R1"; break;
+                        default: break;
+                    }
+                } else if (e.type == SDL_CONTROLLERAXISMOTION && e.caxis.value > 16000) {
+                    if (e.caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERLEFT) label = "L2";       // R36S L2/R2 are
+                    else if (e.caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT) label = "R2"; // trigger axes
+                }
+                if (label) break;
+            }
+            SDL_Delay(10);
+        }
+        if (pad) SDL_GameControllerClose(pad);
+        SDL_Quit();
+        if (label) { std::printf("BUTTON=%s\n", label); return 0; }
+        std::printf("BUTTON=TIMEOUT\n");
+        return 2;
+    }
+
     std::signal(SIGTERM, signalHandler);
     std::signal(SIGINT, signalHandler);
 

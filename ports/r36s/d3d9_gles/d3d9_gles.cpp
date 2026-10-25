@@ -1272,7 +1272,41 @@ void drawFpsCounter(int fbW, int fbH, GLuint fbo) {
     overlayText(verts, 10, 24, text2, 0xE0E0E0FFu, 0.75f);
     submitOverlay(verts, fbW, fbH, fbo, virtW);
 }
+
+// "Now playing" banner: the host music player publishes each track's name through nfsHostMusicNowPlaying
+// (below), and this shows it for a few seconds at the top of the screen when a track starts or is skipped.
+// Returns true when it drew, so the caller re-applies render state like the other overlays do.
+std::mutex g_npMutex;
+std::string g_npText;
+std::atomic<long long> g_npUntilMs{0};   // steady_clock ms; the banner shows while now < this
+long long nowPlayingMs() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+bool drawNowPlaying(int fbW, int fbH, GLuint fbo) {
+    if (nowPlayingMs() >= g_npUntilMs.load(std::memory_order_relaxed)) return false;
+    std::string text;
+    { std::lock_guard<std::mutex> lk(g_npMutex); text = g_npText; }
+    if (text.empty()) return false;
+    const std::string line = "> " + text;
+    const float virtW = 480.0f * static_cast<float>(fbW) / static_cast<float>(fbH);
+    std::vector<OverlayVertex> verts;
+    verts.reserve(line.size() * 6 + 24);
+    const float tw = overlayTextWidth(line.c_str(), 0.9f);
+    const float w = tw + 16.0f, x = std::max(4.0f, (virtW - w) * 0.5f), y = 8.0f;
+    overlayQuad(verts, x, y, x + w, y + 26, 0x000000B0u);   // panel
+    overlayQuad(verts, x, y, x + w, y + 2, 0x9FE04FFFu);    // accent line
+    overlayText(verts, x + 8, y + 7, line.c_str(), 0xF0F0F0FFu, 0.9f);
+    submitOverlay(verts, fbW, fbH, fbo, virtW);
+    return true;
+}
 }  // namespace
+
+// Called by the host music player (music_player.cpp) when a track starts; shows its name for 5 s.
+extern "C" void nfsHostMusicNowPlaying(const char* name) {
+    if (!name) return;
+    { std::lock_guard<std::mutex> lk(g_npMutex); g_npText = name; }
+    g_npUntilMs.store(nowPlayingMs() + 5000, std::memory_order_relaxed);
+}
 
 static std::atomic<uint32_t> g_d3d9PresentCount{0};
 
@@ -1445,6 +1479,15 @@ STDMETHODIMP IDirect3DDevice9GLES::Present(const RECT* pSourceRect, const RECT* 
         m_currentProgram = nullptr;
         for (bool& e : m_attribEnabled) e = false;
         m_fboDirty = true;
+    }
+    {   // Music "now playing" banner (self-gates on its timer; draws nothing most frames).
+        const UINT w = m_presentParams.BackBufferWidth ? m_presentParams.BackBufferWidth : 640;
+        const UINT h = m_presentParams.BackBufferHeight ? m_presentParams.BackBufferHeight : 480;
+        if (drawNowPlaying(static_cast<int>(w), static_cast<int>(h), m_bbFbo)) {
+            m_currentProgram = nullptr;
+            for (bool& e : m_attribEnabled) e = false;
+            m_fboDirty = true;
+        }
     }
     // Diagnostics only (never used for rendering): the game's detected performance level and the
     // graphics options it derived (see HANDOVER section 6.6).
