@@ -91,6 +91,11 @@ A lista troca alguns segundos depois que a corrida começa ou termina (o menu de
 entrada suave, e cada lista continua de onde parou. Se uma pasta estiver vazia, a outra lista é usada.
 **Select + R1** pula para a próxima música.
 
+Para usar a **trilha original do jogo (EA Trax)**: o jogo abre os streams, mas eles não tocam aqui, então
+rode uma vez o `nfsu1/extract-music.sh` (precisa de `ffmpeg`). Ele extrai as faixas do seu próprio
+`gamedata/SNDSTREAMS/STRM_Music_UG0_MB.ast` para `music/race` (e algumas para `music/menu`), de onde o player
+as toca. Nada de música é distribuído com o port — as faixas saem da sua cópia do jogo.
+
 ## Configurações (`nfsu1/nfsu1.cfg`)
 
 | Configuração | Efeito |
@@ -108,6 +113,11 @@ As opções gráficas ficam no menu Opções do próprio jogo (são gravadas no 
 `nfsu1/log.txt` é o log da última execução, e `nfsu1/launcher.log` o do launcher. O player de música escreve
 linhas `[NFSU1 MUSIC]` (faixas abertas e, a cada 10 s, quanto tocou); mensagens da biblioteca de áudio e arquivos
 da EA usada pelo jogo aparecem como `[NFSU1 EA]`.
+
+Cada execução grava uma pasta com data em `nfsu1/logs/` (as 10 mais recentes), com o console, o log do jogo, o
+`dmesg` do kernel e o código de saída — útil quando o jogo fecha antes de escrever no `log.txt`. Se ele fechar
+por um erro nativo, um relatório com o sinal e a pilha vai para `nfsu1/nfs-crash.log` e um aviso para
+`nfsu1/LAST-CRASH.txt`. `nfsu1/build-info.json` identifica a versão exata do runtime.
 
 ## Como compilar
 

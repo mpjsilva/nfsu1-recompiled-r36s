@@ -45,6 +45,26 @@ for f in "$GEN"/recomp_*.c; do
     SRCS+=("$f")
   fi
 done
+# Lifted functions replaced by a native wrapper (src/runtime/nfsu1_fx.c): the source holding the definition is
+# compiled from a copy in which only the definition is renamed *_orig, so every caller (in that file too) reaches
+# the wrapper and the wrapper can still run the original.
+NFSU1_WRAP="sub_005C97CB sub_005D02D7"
+mkdir -p "$OUT/wrap"
+for i in "${!SRCS[@]}"; do
+  src="${SRCS[$i]}"; base=$(basename "$src"); wrap=""
+  for w in $NFSU1_WRAP; do grep -q "^void $w(void) {\$" "$src" && wrap="$wrap $w"; done
+  [ -n "$wrap" ] || continue
+  copy="$OUT/wrap/$base"
+  if [ ! -f "$copy" ] || [ "$src" -nt "$copy" ] || [ "$(cat "$copy.list" 2>/dev/null)" != "$wrap" ]; then
+    cp "$src" "$copy.tmp"
+    for w in $wrap; do sed -i "s/^void $w(void) {\$/void ${w}_orig(void) {/" "$copy.tmp"; done
+    mv "$copy.tmp" "$copy"; echo "$wrap" > "$copy.list"
+  fi
+  SRCS[$i]="$copy"
+done
+for w in $NFSU1_WRAP; do
+  grep -qs "^void ${w}_orig(void) {\$" "$OUT"/wrap/*.c || { echo "ERROR: $w definition not found in the lifted sources"; exit 1; }
+done
 HDR="$ROOT/android/app/src/main/cpp/arm64_guest.h"
 TODO="$OUT/guest/.todo"; : > "$TODO"
 for src in "${SRCS[@]}"; do
@@ -88,7 +108,7 @@ compile "$ROOT/android/app/src/main/cpp/guest_runtime.cpp" "$OUT/obj/guest_runti
 compile "$ROOT/android/app/src/main/cpp/d3d9_bridge.cpp" "$OUT/obj/d3d9_bridge.o" $CXX -std=c++17 $OPT $APPDEF $APPINC & pids+=($!)
 compile "$ROOT/src/runtime/overrides.c" "$OUT/obj/overrides.o" $CC $OPT $APPDEF $APPINC & pids+=($!)
 compile "$ROOT/src/runtime/widescreen.c" "$OUT/obj/widescreen.o" $CC $OPT $APPDEF $APPINC & pids+=($!)
-for extra in src/runtime/nfsu1_stubs.c $NFSU1_EXTRA_SOURCES; do
+for extra in src/runtime/nfsu1_stubs.c src/runtime/nfsu1_fx.c $NFSU1_EXTRA_SOURCES; do
   compile "$ROOT/$extra" "$OUT/obj/$(basename "$extra" .c).o" $CC $OPT $APPDEF $APPINC & pids+=($!)
 done
 fail=0; for p in "${pids[@]}"; do wait "$p" || fail=1; done
@@ -125,4 +145,8 @@ if [ "${GLIBC_COMPAT:-1}" = 1 ]; then
   BADV=$(${CROSS}readelf --dyn-syms -W "$OUT/nfsu1.aarch64" | awk '$7=="UND"{print $8}' | grep -oE '@(GLIBC_2\.(29|[3-9][0-9])|GLIBCXX|CXXABI)[A-Za-z0-9_.]*' | sort -u | tr '\n' ' ')
   [ -z "$BADV" ] || { echo "ERROR: imports too-new symbol versions: $BADV"; exit 1; }
 fi
+# Crash reporter (LD_PRELOAD, separate .so; nothing in the game links against it).
+echo "  CXX libnfs-crash.so"
+$CXX -shared -fPIC -O2 -o "$OUT/libnfs-crash.so" "$ROOT/ports/r36s/nfs_crash_preload.cpp"
+
 echo "built $OUT/nfsu1.aarch64"

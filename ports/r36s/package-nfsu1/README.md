@@ -91,6 +91,11 @@ The list switches a few seconds after a race starts or ends (a pause menu does n
 fade-in, and each list continues where it stopped. When one folder is empty the other list is used.
 **Select + R1** skips to the next track.
 
+To use the game's **original soundtrack (EA Trax)**: the game opens its streams but they do not play here, so
+run `nfsu1/extract-music.sh` once (needs `ffmpeg`). It carves the songs out of your own
+`gamedata/SNDSTREAMS/STRM_Music_UG0_MB.ast` into `music/race` (and a few into `music/menu`), where the player
+picks them up. No music ships with the port — the tracks come from your own copy of the game.
+
 ## Settings (`nfsu1/nfsu1.cfg`)
 
 | Setting | Effect |
@@ -108,6 +113,11 @@ Graphics options are in the game's own Options menu (they are stored in the save
 `nfsu1/log.txt` is the log of the last run, and `nfsu1/launcher.log` is the launcher's. The music player writes
 `[NFSU1 MUSIC]` lines (tracks opened and, every 10 s, how much played); messages from the game's EA
 audio/file library appear as `[NFSU1 EA]`.
+
+Each run also writes a timestamped folder under `nfsu1/logs/` (the 10 most recent), with the console, the game
+log, the kernel `dmesg` and the exit code — useful when the game exits before it writes `log.txt`. If it exits
+on a native error, a report with the signal and a backtrace goes to `nfsu1/nfs-crash.log` and a note to
+`nfsu1/LAST-CRASH.txt`. `nfsu1/build-info.json` records the exact runtime build.
 
 ## Building
 

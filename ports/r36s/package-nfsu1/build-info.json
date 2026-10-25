@@ -1,0 +1,14 @@
+{
+  "port": "nfsu1-recompiled-r36s",
+  "version": "0.1.0",
+  "commit": "5bf5c3b",
+  "native_sha256": "69248a0f0065bc43f37d5467a0585e706f3b15d2dd1b10f9a4856a1964dc2015",
+  "max_glibc": "2.18",
+  "speed_exe_sha256": "35654f401383be9af0dbff0d11a92220a17579a01030005de6943e63e03f460f",
+  "features": {
+    "music_player": true,
+    "crash_reporter": true,
+    "per_run_diagnostics": true,
+    "widescreen": "opt-in (NFSU2_WIDESCREEN=1 / wide display)"
+  }
+}

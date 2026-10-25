@@ -36,6 +36,9 @@ else
 fi
 cd "$GAMEDIR"
 
+# Per-run diagnostics: timestamped logs/ folder, console tee, kernel log and exit code on exit.
+[ -f "$GAMEDIR/port-diagnostics.sh" ] && source "$GAMEDIR/port-diagnostics.sh"
+
 # Binary update delivered in parts (the build host can only write files of up to 30 MB to the card): join
 # nfsu1.aarch64.partNN, check the result against nfsu1.aarch64.update.sha1, then replace the binary. On a
 # checksum failure the parts are kept and the old binary runs. The result goes to update.log.
@@ -82,7 +85,7 @@ restore_clocks() {
     echo "${entry#*=}" | $SUDO tee "${entry%%=*}" > /dev/null 2>&1 || true
   done
 }
-trap restore_clocks EXIT
+trap 'PORT_EXIT=$?; restore_clocks; command -v port_collect_exit >/dev/null 2>&1 && port_collect_exit "$PORT_EXIT"' EXIT
 
 # R36S 1GB RAM Protection:
 # Free reclaimable page caches to maximize contiguous memory before launching
@@ -175,9 +178,15 @@ if [ -n "${GPTOKEYB:-}" ]; then
   $GPTOKEYB "nfsu1.aarch64" -k &
 fi
 
+# Native crash reporter (LD_PRELOAD): writes signal, PC and a backtrace to log.txt and nfs-crash.log.
+export NFS_CRASH_DIR="$GAMEDIR"
+CRASH_PRELOAD=""
+[ -f "$GAMEDIR/libnfs-crash.so" ] && CRASH_PRELOAD="$GAMEDIR/libnfs-crash.so"
+
 # Launch game: GLES 2.0 at the screen's native resolution (see Display above)
 LANG_ARG="--lang=$NFSU1_LANG"
-./nfsu1.aarch64 "$GAMEDIR/gamedata" $CAP_ARG $LANG_ARG > "$GAMEDIR/log.txt" 2>&1
+LD_PRELOAD="${CRASH_PRELOAD}${CRASH_PRELOAD:+${LD_PRELOAD:+:}}${LD_PRELOAD}" \
+  ./nfsu1.aarch64 "$GAMEDIR/gamedata" $CAP_ARG $LANG_ARG > "$GAMEDIR/log.txt" 2>&1
 EXIT_CODE=$?
 
 # Restore console and services on exit
