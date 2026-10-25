@@ -144,3 +144,22 @@ Os arquivos de entrada do lifting do NFSU1 ficam em [`nfsu1/`](../../../nfsu1), 
 
 O player de música usa [stb_vorbis](https://github.com/nothings/stb) 1.22 e
 [dr_mp3](https://github.com/mackron/dr_libs) 0.7.3 (domínio público / MIT-0), em `ports/r36s/third_party/`.
+
+## Créditos
+
+Este port só existe por causa do trabalho de muita gente. Obrigado:
+
+- **Port do NFSU1 e o launcher** — [mpjsilva](https://github.com/mpjsilva/nfsu1-recompiled-r36s)
+  (este repositório).
+- **Recompilação e runtime do NFSU2**, a base sobre a qual este port roda —
+  [manuelpllull](https://github.com/manuelpllull/nfsu2-recompiled-r36s).
+- **pcrecomp**, o recompilador estático x86→C — [sp00nznet](https://github.com/sp00nznet/pcrecomp).
+- **Port independente do NFSU1 do [fera89](https://github.com/fera89/nfsu1-recompiled-r36s)** — o
+  soundtrack completo (EA Trax) e a documentação de controles (`CONTROLES.md`) dele ajudaram
+  diretamente nas correções deste port (as teclas de marcha e o arquivo de música completo).
+- **Bibliotecas**: [stb_vorbis](https://github.com/nothings/stb) (Sean Barrett),
+  [dr_mp3](https://github.com/mackron/dr_libs) (David Reid), [MojoShader](https://icculus.org/mojoshader/)
+  (Ryan C. Gordon) e a fonte **DejaVu** (bitmap do overlay/teclado).
+
+*Need for Speed: Underground* é © Electronic Arts. Este é um port feito por fãs; use a sua própria
+cópia original do jogo.

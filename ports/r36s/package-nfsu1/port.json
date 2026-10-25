@@ -11,6 +11,7 @@
     "desc": "Native static binary recompilation of Need for Speed: Underground (SPEED.EXE) for Rockchip RK3326 and ARM64 Linux handhelds, on the NFSU2 recompilation's runtime.",
     "inst": "Copy your retail PC Need for Speed Underground installation files into the ports/nfsu1/gamedata/ folder on your SD card. Required: SPEED.EXE, Global, Cars, Tracks, FrontEnd, Sound.",
     "genres": ["Racing", "Action"],
+    "porter": ["mpjsilva"],
     "portver": "0.1.0",
     "runtimes": [],
     "reqs": ["640x480", "1GB RAM"],

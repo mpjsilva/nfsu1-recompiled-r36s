@@ -163,6 +163,46 @@ settings_menu() {
   done
 }
 
+# Credits: everyone this port is built on. Shown in a scrollable box (d-pad scrolls, A/B closes).
+credits_screen() {
+  local f=/tmp/nfsu1-credits.txt
+  cat > "$f" <<'EOF'
+Need for Speed: Underground - port para R36S
+
+Port do NFSU1 e este launcher:
+  mpjsilva
+  github.com/mpjsilva/nfsu1-recompiled-r36s
+
+Runtime e recompilacao do NFSU2 (a base deste port):
+  manuelpllull
+  github.com/manuelpllull/nfsu2-recompiled-r36s
+
+Recompilador estatico pcrecomp:
+  sp00nznet
+  github.com/sp00nznet/pcrecomp
+
+Port NFSU1 independente do fera89 - o soundtrack
+completo (EA Trax) e a documentacao de controles
+ajudaram nas correcoes deste port:
+  fera89
+  github.com/fera89/nfsu1-recompiled-r36s
+
+Bibliotecas:
+  stb_vorbis - Sean Barrett (nothings/stb)
+  dr_mp3 - David Reid (mackron/dr_libs)
+  MojoShader - Ryan C. Gordon
+  fonte DejaVu (bitmap do overlay/teclado)
+
+Need for Speed: Underground (c) Electronic Arts.
+Port feito por fas; use a sua propria copia do jogo.
+
+Obrigado a todos que tornaram este port possivel!
+EOF
+  dialog --colors --no-collapse --backtitle "NFS Underground - R36S" --title " Creditos " \
+    --exit-label "Voltar" --textbox "$f" 20 56 >"$CURR_TTY" <"$CURR_TTY"
+  rm -f "$f"
+}
+
 # The menu itself: sets up the console + pad, loops, and cleans up. Returns 0 to start the game, 1 to quit.
 pre_menu() {
   local C RC START=0
@@ -175,9 +215,9 @@ pre_menu() {
   menu_pad_on
   while true; do
     C=$(dlg --title " NFS Underground " --ok-label "OK" --cancel-label "Sair" --default-item "${MITEM:-1}" \
-        --menu "\nA: escolher   B: sair" 15 52 6 \
+        --menu "\nA: escolher   B: sair" 16 52 6 \
         1 "Iniciar o jogo" 2 "Controles" 3 "Exportar save (backup)" \
-        4 "Importar save (restaurar)" 5 "Configuracoes"); RC=$?
+        4 "Importar save (restaurar)" 5 "Configuracoes" 6 "Creditos"); RC=$?
     [ $RC -ne 0 ] && break
     MITEM="$C"
     case "$C" in
@@ -186,6 +226,7 @@ pre_menu() {
       3) export_save ;;
       4) import_save ;;
       5) settings_menu ;;
+      6) credits_screen ;;
     esac
   done
   menu_pad_off
